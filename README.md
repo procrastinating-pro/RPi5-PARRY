@@ -135,6 +135,31 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 * **\[Extra\] Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów (w tym opcjonalnego Media Stacka) i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
 
+### 🧱 Dodawanie list blokowania (Blocklist) do Pi-hole (`add_pihole_blocklists.sh`)
+
+Po uruchomieniu kontenera **Pi-hole** możesz jednym poleceniem dodać sprawdzone listy blokujące reklamy, telemetrię, **malware** oraz **phishing** (z opcjonalną kopią zapasową bazy `gravity.db` w `~/pihole_backups` przed zmianami):
+
+```
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/add_pihole_blocklists.sh)
+
+```
+
+**Dostępne profile w konfiguratorze:**
+
+1. **HaGeZi Multi PRO + TIF (`pro` + `tif-1` + `tif-2`, format RPZ) *(zalecane)*** – optymalna ochrona przed reklamami, telemetrią, malware i phishingiem przy minimalnej liczbie błędnych blokad.
+
+2. **HaGeZi Multi PRO + TIF Medium** – lżejszy wariant listy Threat Intelligence Feeds.
+
+3. **HaGeZi Multi PRO++ + TIF (`pro.plus` + `tif-1` + `tif-2`)** – bardziej agresywne blokowanie reklam i trackerów.
+
+4. **HaGeZi Ultimate + TIF (`ultimate` + `tif-1` + `tif-2`)** – maksymalny poziom blokowania (może wymagać ręcznego dodawania wyjątków do białej listy).
+
+5. **Klasyczny zestaw** – StevenBlack Unified Hosts, AdGuard DNS Filter, Firebog (AdGuardDNS, EasyList, EasyPrivacy) oraz Perflyst SmartTV.
+
+6. **Własna lista adresów URL** – ręczne podanie dowolnych linków do list blokowania.
+
+Skrypt automatycznie wykrywa dostępne narzędzie do edycji `gravity.db` (`pihole-FTL sqlite3`, `sqlite3`, `python3` w kontenerze lub `python3` na hoście), pomija duplikaty i na końcu uruchamia `pihole -g`.
+
 ### ⚠️ Ważne: Konfiguracja DNS na routerze
 
 Aby blokowanie reklam przez **Pi-hole** oraz lokalne domeny (`.home`) działały automatycznie na wszystkich urządzeniach w domu (telefonach, telewizorach, komputerach):
@@ -156,39 +181,6 @@ Skrypt `setup_homelab.sh` automatycznie pyta o lokalne domeny podczas instalacji
 Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedytować plik `~/docker/homelab/docker-compose.yml` (sekcja `extra_hosts` oraz `FTLCONF_dns_hosts` w usłudze `pihole`) i przeładować kontenery komendą `docker compose up -d`.
 
 *(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
-
-### 🚫 Dodawanie list blokowania (Blocklist) do Pi-hole (`add_pihole_blocklists.sh`)
-
-Po uruchomieniu kontenera Pi-hole możesz jednym poleceniem wzbogacić jego bazę o sprawdzone listy blokujące reklamy, telemetrię oraz złośliwe domeny (domyślnie oparte na agregowanych listach **HaGeZi**):
-
-```
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/add_pihole_blocklists.sh)
-
-```
-
-**Co robi skrypt:**
-
-* Automatycznie wykrywa działający kontener **Pi-hole** w Dockerze.
-
-* Sam dobiera dostępny silnik do edycji bazy `/etc/pihole/gravity.db` w kolejności: `pihole-FTL sqlite3` → `sqlite3` w kontenerze → `python3` w kontenerze → `python3` na hoście (obsługuje zarówno Pi-hole v5, jak i v6).
-
-* Pozwala wybrać jeden z 6 gotowych profili list:
-
-  1. **HaGeZi Multi PRO + TIF (zalecane):** reklamy, telemetria, tracking oraz malware/phishing (`rpz/pro.txt` + podzielony na dwie mniejsze części `rpz/tif-1.txt` oraz `rpz/tif-2.txt`, co eliminuje problemy z limitem rozmiaru plików na CDN).
-
-  2. **HaGeZi Multi PRO + TIF Medium:** lżejszy wariant listy zagrożeń (`rpz/tif.medium.txt`).
-
-  3. **HaGeZi Multi PRO++ + TIF:** agresywniejsze blokowanie reklam i trackingu (`rpz/pro.plus.txt` + `tif-1` / `tif-2`).
-
-  4. **HaGeZi Ultimate + TIF:** maksymalne blokowanie (`rpz/ultimate.txt` + `tif-1` / `tif-2` — może wymagać ręcznego dodawania wyjątków na białą listę).
-
-  5. **Klasyczny zestaw:** StevenBlack Unified Hosts, AdGuard DNS, Firebog (AdGuardDNS, EasyList, EasyPrivacy) oraz Perflyst SmartTV.
-
-  6. **Własna lista adresów URL** podana z klawiatury.
-
-* Przed wprowadzeniem zmian proponuje wykonanie kopii zapasowej bazy do `~/pihole_backups/gravity_DATA.db`.
-
-* Pomija duplikaty i na końcu uruchamia `pihole -g`, aby natychmiast pobrać i aktywować nowe reguły.
 
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
 
@@ -419,6 +411,30 @@ docker compose run --rm filebrowser users update admin --password "TwojeNoweHasl
 docker compose start filebrowser
 
 ```
+
+## 💰 Szacowane oszczędności i zwrot z inwestycji (ROI w domu)
+
+W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subskrypcje w chmurze i serwisy zewnętrzne o ok. **620 – 970 PLN rocznie** w wariancie podstawowym (HomeLab & NAS) oraz ok. **1 820 – 3 370 PLN rocznie** przy wykorzystaniu opcjonalnego Media Stacka.
+
+| Usługa w domu | Komercyjny odpowiednik | Zestaw na RPi 5 | Roczna oszczędność | 
+| ----- | ----- | ----- | ----- | 
+| **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (\~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
+| **Menedżer haseł** | Bitwarden Premium / 1Password (\~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
+| **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (\~80–200 PLN/rok) | **Pi-hole + Twingate** (darmowy do 5 osób) | **80 – 200 PLN** | 
+| **Platformy VOD (opcjonalnie)** | 2–4 serwisy streamingowe (\~100–200 PLN/mies.) | **Jellyfin + pakiet \*arr** (0 PLN) | **1 200 – 2 400 PLN** | 
+| **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (\~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
+| **RAZEM (bez Media Stacka)** | **\~690 – 1 040 PLN / rok** | **\~70 PLN / rok** | **\~620 – 970 PLN / rok** | 
+| **RAZEM (z Media Stackiem)** | **\~1 890 – 3 440 PLN / rok** | **\~70 PLN / rok** | **\~1 820 – 3 370 PLN / rok** | 
+
+**Szacowany czas zwrotu sprzętu** (przy koszcie zakupu brutto RPi 5, M.2 HAT+, dysku NVMe 1–2 TB, Active Coolera i zasilacza 27W na poziomie ok. **1 100 – 1 400 PLN**):
+
+* **Tylko HomeLab & NAS:** zwrot po **1,5 – 2 latach**.
+
+* **Z Media Stackiem:** zwrot w **5 – 8 miesięcy**.
+
+* **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **\~430 PLN rocznie** na energii elektrycznej.
+
+*(Wskazówka: Ponieważ zestaw pracuje na pojedynczym dysku NVMe, najważniejsze pliki z `/srv/nas/pliki` warto okresowo kopiować na zewnętrzny dysk USB zgodnie z zasadą backupu 3-2-1).*
 
 ## 📄 Licencja
 
