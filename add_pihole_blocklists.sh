@@ -70,21 +70,25 @@ fi
 
 echo -e "${GREEN}[+] Wykryty silnik bazy danych: ${DB_ENGINE}${NC}"
 
-# Zestawy blocklist (URL|OPIS)
+# Zestawy blocklist (URL|OPIS) — raw.githubusercontent.com omija limit 20 MB z jsDelivr
 LIST_HAGEZI_PRO=(
-    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
 )
 
 LIST_HAGEZI_PRO_PLUS=(
-    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
 )
 
 LIST_HAGEZI_ULTIMATE=(
-    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
 )
 
-LIST_HAGEZI_TIF=(
-    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt|HaGeZi Threat Intelligence Feeds (Malware/Phishing/C2)"
+LIST_HAGEZI_TIF_FULL=(
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt|HaGeZi Threat Intelligence Feeds - Full (Malware/Phishing/C2)"
+)
+
+LIST_HAGEZI_TIF_MEDIUM=(
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.medium.txt|HaGeZi Threat Intelligence Feeds - Medium (Malware/Phishing/C2)"
 )
 
 LIST_CLASSIC=(
@@ -98,11 +102,12 @@ LIST_CLASSIC=(
 
 echo ""
 echo "Wybierz zestaw list do dodania:"
-echo "  1) HaGeZi Multi PRO + TIF (zalecane — reklamy, telemetria, malware)"
-echo "  2) HaGeZi Multi PRO++ + TIF (agresywniejsze blokowanie)"
-echo "  3) HaGeZi Ultimate + TIF (maksymalne blokowanie — może wymagać whitelisty)"
-echo "  4) Klasyczny zestaw (StevenBlack + AdGuard + Firebog + SmartTV)"
-echo "  5) Własna lista adresów URL (oddzielone spacją)"
+echo "  1) HaGeZi Multi PRO + TIF Full (zalecane — reklamy, telemetria, malware)"
+echo "  2) HaGeZi Multi PRO + TIF Medium (lżejszy wariant TIF)"
+echo "  3) HaGeZi Multi PRO++ + TIF Full (agresywniejsze blokowanie)"
+echo "  4) HaGeZi Ultimate + TIF Full (maksymalne blokowanie — może wymagać whitelisty)"
+echo "  5) Klasyczny zestaw (StevenBlack + AdGuard + Firebog + SmartTV)"
+echo "  6) Własna lista adresów URL (oddzielone spacją)"
 read -rp "Wybór [domyślnie: 1]: " PROFILE_CHOICE
 PROFILE_CHOICE=${PROFILE_CHOICE:-1}
 
@@ -119,20 +124,24 @@ add_array_entries() {
 case "$PROFILE_CHOICE" in
     1)
         add_array_entries LIST_HAGEZI_PRO
-        add_array_entries LIST_HAGEZI_TIF
+        add_array_entries LIST_HAGEZI_TIF_FULL
         ;;
     2)
-        add_array_entries LIST_HAGEZI_PRO_PLUS
-        add_array_entries LIST_HAGEZI_TIF
+        add_array_entries LIST_HAGEZI_PRO
+        add_array_entries LIST_HAGEZI_TIF_MEDIUM
         ;;
     3)
-        add_array_entries LIST_HAGEZI_ULTIMATE
-        add_array_entries LIST_HAGEZI_TIF
+        add_array_entries LIST_HAGEZI_PRO_PLUS
+        add_array_entries LIST_HAGEZI_TIF_FULL
         ;;
     4)
-        add_array_entries LIST_CLASSIC
+        add_array_entries LIST_HAGEZI_ULTIMATE
+        add_array_entries LIST_HAGEZI_TIF_FULL
         ;;
     5)
+        add_array_entries LIST_CLASSIC
+        ;;
+    6)
         read -rp "Podaj adresy URL blocklist: " CUSTOM_URLS
         for url in $CUSTOM_URLS; do
             [[ -n "$url" ]] && SELECTED_ENTRIES+=("${url}|Custom list")
