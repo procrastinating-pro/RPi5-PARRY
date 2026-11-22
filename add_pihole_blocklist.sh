@@ -71,31 +71,38 @@ fi
 echo -e "${GREEN}[+] Wykryty silnik bazy danych: ${DB_ENGINE}${NC}"
 
 # Zestawy blocklist (URL|OPIS)
-LIST_ADS=(
-    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts|StevenBlack Unified Hosts (Ads + Malware)"
+LIST_HAGEZI_PRO=(
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
+)
+
+LIST_HAGEZI_PRO_PLUS=(
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
+)
+
+LIST_HAGEZI_ULTIMATE=(
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
+)
+
+LIST_HAGEZI_TIF=(
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt|HaGeZi Threat Intelligence Feeds (Malware/Phishing/C2)"
+)
+
+LIST_CLASSIC=(
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts|StevenBlack Unified Hosts"
     "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt|AdGuard DNS Filter"
     "https://v.firebog.net/hosts/AdguardDNS.txt|Firebog - AdGuardDNS"
     "https://v.firebog.net/hosts/Easylist.txt|Firebog - EasyList"
-)
-
-LIST_TELEMETRY=(
-    "https://v.firebog.net/hosts/Easyprivacy.txt|Firebog - EasyPrivacy (Tracking/Telemetry)"
+    "https://v.firebog.net/hosts/Easyprivacy.txt|Firebog - EasyPrivacy"
     "https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV.txt|Perflyst SmartTV Blocklist"
-    "https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/AmazonFireTV.txt|Perflyst Amazon FireTV"
-)
-
-LIST_MALWARE=(
-    "https://urlhaus.abuse.ch/downloads/hostfile/|abuse.ch URLhaus Malware Hostfile"
-    "https://v.firebog.net/hosts/Prigent-Malware.txt|Firebog - Prigent Malware"
-    "https://v.firebog.net/hosts/RPiList-Malware.txt|Firebog - RPiList Malware"
 )
 
 echo ""
 echo "Wybierz zestaw list do dodania:"
-echo "  1) Podstawowy zestaw: Reklamy + Telemetria (zalecane)"
-echo "  2) Pełny zestaw: Reklamy + Telemetria + Malware"
-echo "  3) Tylko Reklamy"
-echo "  4) Własna lista adresów URL (oddzielone spacją)"
+echo "  1) HaGeZi Multi PRO + TIF (zalecane — reklamy, telemetria, malware)"
+echo "  2) HaGeZi Multi PRO++ + TIF (agresywniejsze blokowanie)"
+echo "  3) HaGeZi Ultimate + TIF (maksymalne blokowanie — może wymagać whitelisty)"
+echo "  4) Klasyczny zestaw (StevenBlack + AdGuard + Firebog + SmartTV)"
+echo "  5) Własna lista adresów URL (oddzielone spacją)"
 read -rp "Wybór [domyślnie: 1]: " PROFILE_CHOICE
 PROFILE_CHOICE=${PROFILE_CHOICE:-1}
 
@@ -111,18 +118,21 @@ add_array_entries() {
 
 case "$PROFILE_CHOICE" in
     1)
-        add_array_entries LIST_ADS
-        add_array_entries LIST_TELEMETRY
+        add_array_entries LIST_HAGEZI_PRO
+        add_array_entries LIST_HAGEZI_TIF
         ;;
     2)
-        add_array_entries LIST_ADS
-        add_array_entries LIST_TELEMETRY
-        add_array_entries LIST_MALWARE
+        add_array_entries LIST_HAGEZI_PRO_PLUS
+        add_array_entries LIST_HAGEZI_TIF
         ;;
     3)
-        add_array_entries LIST_ADS
+        add_array_entries LIST_HAGEZI_ULTIMATE
+        add_array_entries LIST_HAGEZI_TIF
         ;;
     4)
+        add_array_entries LIST_CLASSIC
+        ;;
+    5)
         read -rp "Podaj adresy URL blocklist: " CUSTOM_URLS
         for url in $CUSTOM_URLS; do
             [[ -n "$url" ]] && SELECTED_ENTRIES+=("${url}|Custom list")
