@@ -70,25 +70,26 @@ fi
 
 echo -e "${GREEN}[+] Wykryty silnik bazy danych: ${DB_ENGINE}${NC}"
 
-# Zestawy blocklist (URL|OPIS) — format Adblock pod Pi-hole v6, raw.githubusercontent.com omija limit 20 MB z jsDelivr
+# Zestawy blocklist (URL|OPIS)
 LIST_HAGEZI_PRO=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
 )
 
 LIST_HAGEZI_PRO_PLUS=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
 )
 
 LIST_HAGEZI_ULTIMATE=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
 )
 
 LIST_HAGEZI_TIF_FULL=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt|HaGeZi Threat Intelligence Feeds - Full (Malware/Phishing/C2)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif-1.txt|HaGeZi Threat Intelligence Feeds - Part 1 (Malware/Phishing/C2)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif-2.txt|HaGeZi Threat Intelligence Feeds - Part 2 (Malware/Phishing/C2)"
 )
 
 LIST_HAGEZI_TIF_MEDIUM=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt|HaGeZi Threat Intelligence Feeds - Medium (Malware/Phishing/C2)"
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/rpz/tif.medium.txt|HaGeZi Threat Intelligence Feeds - Medium (Malware/Phishing/C2)"
 )
 
 LIST_CLASSIC=(
@@ -102,10 +103,10 @@ LIST_CLASSIC=(
 
 echo ""
 echo "Wybierz zestaw list do dodania:"
-echo "  1) HaGeZi Multi PRO + TIF Full (zalecane — reklamy, telemetria, malware)"
+echo "  1) HaGeZi Multi PRO + TIF (pro + tif-1 + tif-2) [zalecane]"
 echo "  2) HaGeZi Multi PRO + TIF Medium (lżejszy wariant TIF)"
-echo "  3) HaGeZi Multi PRO++ + TIF Full (agresywniejsze blokowanie)"
-echo "  4) HaGeZi Ultimate + TIF Full (maksymalne blokowanie — może wymagać whitelisty)"
+echo "  3) HaGeZi Multi PRO++ + TIF (pro.plus + tif-1 + tif-2)"
+echo "  4) HaGeZi Ultimate + TIF (ultimate + tif-1 + tif-2)"
 echo "  5) Klasyczny zestaw (StevenBlack + AdGuard + Firebog + SmartTV)"
 echo "  6) Własna lista adresów URL (oddzielone spacją)"
 read -rp "Wybór [domyślnie: 1]: " PROFILE_CHOICE
