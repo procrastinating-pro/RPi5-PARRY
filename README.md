@@ -20,6 +20,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden** oraz **Watchtower** (auto-update o 04:00). | 
+| **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker **Pi-hole**: dodaje gotowe pakiety (Reklamy, Telemetria, Malware) lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
 | **`setup_mediastack.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Opcjonalny, niezależny kreator **Media Stacka** (Czysty Bash `[T/n]`, katalog `~/docker/mediastack`): **Jellyfin**, **qBittorrent** (z wbudowanym powiadomieniem prawnym P2P i potwierdzeniem `[t/N]`), **Prowlarr**, **Sonarr**, **Radarr** i **Bazarr** w układzie hardlinków. | 
 | **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z menu wyboru zakresu (**tylko HomeLab & NAS**, **tylko Media Stack** lub **oba środowiska**) i podwójnym potwierdzeniem: usuwa wybrane kontenery, nieużywane sieci/obrazy i katalogi konfiguracyjne, przywraca `systemd-resolved` (przy usuwaniu HomeLaba) oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki` lub samo `/media` i `/downloads`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
@@ -35,7 +36,7 @@ Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa z
 2. Uruchom interaktywny konfigurator bezpośrednio z terminala:
 
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh)
 ```
 
 **Co możesz skonfigurować w kreatorze:**
@@ -70,7 +71,7 @@ nmap -p 22 -T4 -n 192.168.1.0/24 --open
 Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker, Docker Compose v2 oraz harmonogram automatycznej konserwacji systemu jedną komendą:
 
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh) | bash && newgrp docker
+curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh | bash && newgrp docker
 ```
 
 **Co robi skrypt:**
@@ -93,7 +94,7 @@ docker run --rm hello-world
 Aby uruchomić podstawowe usługi domowego serwera (z możliwością wyboru `[T/n]` dla każdego kontenera), wykonaj na Raspberry Pi 5:
 
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh)
 ```
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
@@ -125,12 +126,32 @@ Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedyto
 
 *(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
 
+### 🚫 Dodawanie list blokowania (Blocklist) do Pi-hole (`add_pihole_blocklists.sh`)
+
+Po uruchomieniu kontenera Pi-hole możesz jednym poleceniem wzbogacić jego bazę o sprawdzone listy blokujące reklamy, telemetrię (w tym Smart TV) oraz złośliwe domeny:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/add_pihole_blocklists.sh)
+```
+
+**Co robi skrypt:**
+
+* Automatycznie wykrywa działający kontener **Pi-hole** w Dockerze.
+* Sam dobiera dostępny silnik do edycji bazy `/etc/pihole/gravity.db` w kolejności: `pihole-FTL sqlite3` → `sqlite3` w kontenerze → `python3` w kontenerze → `python3` na hoście (obsługuje zarówno Pi-hole v5, jak i v6).
+* Pozwala wybrać gotowy profil list:
+  1. **Podstawowy (zalecany):** Reklamy + Telemetria (StevenBlack, AdGuard DNS, Firebog EasyList/EasyPrivacy, Perflyst SmartTV/FireTV).
+  2. **Pełny:** Reklamy + Telemetria + Malware (dodatkowo abuse.ch URLhaus, Firebog Prigent & RPiList Malware).
+  3. **Tylko Reklamy.**
+  4. **Własne adresy URL** podane z klawiatury.
+* Przed wprowadzeniem zmian proponuje wykonanie kopii zapasowej bazy do `~/pihole_backups/gravity_DATA.db`.
+* Pomija duplikaty i na końcu uruchamia `pihole -g`, aby natychmiast pobrać i aktywować nowe reguły.
+
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
 
 W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić optymalny obieg powietrza wokół radiatora NVMe oraz cichą pracę, uruchom konfigurator chłodzenia:
 
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh)
 ```
 
 **Co robi skrypt:**
@@ -144,7 +165,7 @@ bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PA
 Usługi multimedialne zostały wydzielone do osobnego skryptu instalowanego w dedykowanym katalogu `~/docker/mediastack`, dzięki czemu nie nadpisują konfiguracji głównego HomeLaba (`~/docker/homelab`) i mogą być zarządzane niezależnie.
 
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_mediastack.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_mediastack.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_mediastack.sh)
 ```
 
 **Dostępne kontenery do wyboru w kreatorze `[1/6 – 6/6]`:**
@@ -213,7 +234,7 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnyc
 Jeśli chcesz zresetować wybrane środowisko (albo oba naraz), usunąć jego kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh)
 ```
 
 **Menu wyboru i zabezpieczenia deinstalatora:**
@@ -242,7 +263,7 @@ watch -n 2 rpi-temp
   Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
 
 ```bash
-sudo bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh))
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh)
 ```
 
 * **Sprawdzenie czy nocny Auto-Update systemu (03:30) został przeprowadzony:**
@@ -265,7 +286,7 @@ tail -n 30 /var/log/apt/history.log
 docker logs watchtower
 
 # 2. Sprawdzenie dokładnej daty utworzenia/aktualizacji poszczególnych kontenerów:
-docker inspect --format='{{.Name}} -> Utworzony: {{.Created}}' \$(docker ps -a -q)
+docker inspect --format='{{.Name}} -> Utworzony: {{.Created}}' $(docker ps -a -q)
 
 # 3. Ręczne wymuszenie natychmiastowego sprawdzenia i aktualizacji wszystkich kontenerów (test jednorazowy):
 sudo docker run --rm -e DOCKER_API_VERSION=1.44 -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower --run-once
