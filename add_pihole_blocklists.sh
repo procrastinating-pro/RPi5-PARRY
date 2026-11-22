@@ -70,25 +70,25 @@ fi
 
 echo -e "${GREEN}[+] Wykryty silnik bazy danych: ${DB_ENGINE}${NC}"
 
-# Zestawy blocklist (URL|OPIS) — raw.githubusercontent.com omija limit 20 MB z jsDelivr
+# Zestawy blocklist (URL|OPIS) — format Adblock pod Pi-hole v6, raw.githubusercontent.com omija limit 20 MB z jsDelivr
 LIST_HAGEZI_PRO=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt|HaGeZi Multi PRO (Ads + Tracking + Telemetry)"
 )
 
 LIST_HAGEZI_PRO_PLUS=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt|HaGeZi Multi PRO++ (Aggressive Ads + Tracking)"
 )
 
 LIST_HAGEZI_ULTIMATE=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt|HaGeZi Ultimate (Very Aggressive)"
 )
 
 LIST_HAGEZI_TIF_FULL=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt|HaGeZi Threat Intelligence Feeds - Full (Malware/Phishing/C2)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt|HaGeZi Threat Intelligence Feeds - Full (Malware/Phishing/C2)"
 )
 
 LIST_HAGEZI_TIF_MEDIUM=(
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.medium.txt|HaGeZi Threat Intelligence Feeds - Medium (Malware/Phishing/C2)"
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt|HaGeZi Threat Intelligence Feeds - Medium (Malware/Phishing/C2)"
 )
 
 LIST_CLASSIC=(
