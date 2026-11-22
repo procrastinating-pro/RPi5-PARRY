@@ -85,7 +85,7 @@ LIST_TELEMETRY=(
 )
 
 LIST_MALWARE=(
-    "https://urlhaus.abuse.ch/downloads/text/|abuse.ch URLhaus Malware URLs"
+    "https://urlhaus.abuse.ch/downloads/hostfile/|abuse.ch URLhaus Malware Hostfile"
     "https://v.firebog.net/hosts/Prigent-Malware.txt|Firebog - Prigent Malware"
     "https://v.firebog.net/hosts/RPiList-Malware.txt|Firebog - RPiList Malware"
 )
