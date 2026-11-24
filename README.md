@@ -40,9 +40,8 @@ Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa z
 
 2. Uruchom interaktywny konfigurator bezpośrednio z terminala:
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh)
-
 ```
 
 **Co możesz skonfigurować w kreatorze:**
@@ -61,32 +60,28 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 3. Po zakończeniu pracy skryptu odmontuj partycje, przełóż nośnik do Raspberry Pi 5, podłącz kabel LAN oraz zasilanie:
 
-```
+```bash
 sudo umount /media/$USER/bootfs /media/$USER/rootfs
-
 ```
 
 4. Po około 60–90 sekundach połącz się z płytką przez SSH:
 
-```
+```bash
 ssh twoj_login@192.168.1.250
-
 ```
 
 *(Jeśli musisz zlokalizować płytkę w sieci lokalnej, użyj szybkiego skanowania Nmap dla portu SSH):*
 
-```
+```bash
 nmap -p 22 -T4 -n 192.168.1.0/24 --open
-
 ```
 
 ## 🐳 Krok 2: Instalacja Dockera i Auto-Maintenance (`install_docker.sh`)
 
 Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker, Docker Compose v2 oraz harmonogram automatycznej konserwacji systemu jedną komendą:
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh | bash && newgrp docker
-
 ```
 
 **Co robi skrypt:**
@@ -105,18 +100,36 @@ curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs
 
 *Weryfikacja poprawności instalacji:*
 
-```
+```bash
 docker run --rm hello-world
-
 ```
 
 ## 🛡️ Krok 3: Instalacja usług HomeLab & NAS (`setup_homelab.sh`)
 
+### 🔑 Przed uruchomieniem: Przygotowanie tokenów Twingate (opcjonalnie)
+
+Jeśli planujesz uruchomić zdalny dostęp **Twingate Connector**, wygeneruj tokeny **zanim** odpalisz `setup_homelab.sh` – kreator poprosi o ich wklejenie w trakcie instalacji:
+
+1. Zaloguj się do panelu administracyjnego **`admin.twingate.com`**.
+
+2. Przejdź do *Network → Remote Networks*, kliknij **Add a Remote Network**, nazwij sieć (np. `HomeLab` lub `Dom`) i wybierz lokalizację **On-Premise**.
+
+3. Wejdź w utworzoną sieć, kliknij **Deploy Connector** i jako metodę wdrożenia wybierz **Docker**.
+
+4. Kliknij **Generate Tokens** i pozostaw otwartą kartę z trzema wartościami, o które zapyta skrypt:
+
+   * nazwą sieci (`TWINGATE_NETWORK` – np. `twojanazwa` z adresu `twojanazwa.twingate.com`),
+
+   * `TWINGATE_ACCESS_TOKEN`,
+
+   * `TWINGATE_REFRESH_TOKEN`.
+
+### 🚀 Uruchomienie kreatora `setup_homelab.sh`
+
 Aby uruchomić podstawowe usługi domowego serwera (z możliwością wyboru `[T/n]` dla każdego kontenera), wykonaj na Raspberry Pi 5:
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh)
-
 ```
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
@@ -141,9 +154,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 Po uruchomieniu kontenera **Pi-hole** możesz jednym poleceniem dodać sprawdzone listy blokujące reklamy, telemetrię, **malware** oraz **phishing** (z opcjonalną kopią zapasową bazy `gravity.db` w `~/pihole_backups` przed zmianami):
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/add_pihole_blocklists.sh)
-
 ```
 
 **Dostępne profile w konfiguratorze:**
@@ -184,27 +196,15 @@ Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedyto
 
 *(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
 
-### 🔐 Konfiguracja Twingate (Onboarding i zdalny dostęp)
+### 🔐 Dokończenie konfiguracji Twingate (po uruchomieniu kontenerów)
 
-Aby połączyć się z HomeLabem spoza domu bez przekierowywania portów na routerze, wykonaj poniższe kroki w panelu administracyjnym **`admin.twingate.com`**:
+Gdy `setup_homelab.sh` uruchomi już kontener `twingate-connector`, dokończ konfigurację zdalnego dostępu w panelu **`admin.twingate.com`**:
 
-1. **Remote Network (Sieć zdalna):**
+1. **Weryfikacja Connectora:**
 
-   * Przejdź do *Network → Remote Networks* i kliknij **Add a Remote Network**.
+   * Sprawdź, czy status Connectora w panelu zmienił się na zielony (**Connected**). Lokalnie połączenie zweryfikujesz komendą `sudo docker logs twingate-connector`.
 
-   * Nazwij sieć dowolnie (np. `HomeLab` lub `Dom`) i wybierz lokalizację **On-Premise**.
-
-2. **Connector i tokeny:**
-
-   * Wejdź w utworzoną sieć, kliknij **Deploy Connector** i jako metodę wdrożenia wybierz **Docker**.
-
-   * Kliknij **Generate Tokens**, aby uzyskać `TWINGATE_NETWORK` (np. `twojanazwa` z adresu `twojanazwa.twingate.com`), `TWINGATE_ACCESS_TOKEN` oraz `TWINGATE_REFRESH_TOKEN`.
-
-   * Wklej je podczas uruchamiania `setup_homelab.sh` (lub dopisz w `~/docker/homelab/docker-compose.yml` / `.env` i wykonaj `docker compose up -d`).
-
-   * Po chwili status Connectora zmieni się na zielony (**Connected**). Połączenie zweryfikujesz też komendą `sudo docker logs twingate-connector`.
-
-3. **Resources (Zasoby dostępne zdalnie):**
+2. **Resources (Zasoby dostępne zdalnie):**
 
    * W ustawieniach swojej sieci kliknij **Add Resource** i dodaj (przypisując dostęp grupie **Everyone** lub własnej):
 
@@ -212,7 +212,7 @@ Aby połączyć się z HomeLabem spoza domu bez przekierowywania portów na rout
 
      * **Lokalne domeny `.home`:** adres `*.home` – dzięki pracy w trybie `network_mode: host` Connector odpytuje lokalnego Pi-hole'a i rozwiązuje `nas.home`, `pihole.home`, `vault.home`, `git.home` czy `media.home`.
 
-4. **Klient na telefonie / laptopie:**
+3. **Klient na telefonie / laptopie:**
 
    * Zainstaluj aplikację **Twingate**, zaloguj się do swojej sieci (`twojanazwa.twingate.com`), przełącz telefon na dane komórkowe i sprawdź dostęp np. do `http://192.168.1.250:8081` lub `http://pihole.home:8080/admin`.
 
@@ -222,9 +222,8 @@ Aby połączyć się z HomeLabem spoza domu bez przekierowywania portów na rout
 
 W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić optymalny obieg powietrza wokół radiatora NVMe oraz cichą pracę, uruchom konfigurator chłodzenia:
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh)
-
 ```
 
 **Co robi skrypt:**
@@ -239,9 +238,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 Usługi multimedialne zostały wydzielone do osobnego skryptu instalowanego w dedykowanym katalogu `~/docker/mediastack`, dzięki czemu nie nadpisują konfiguracji głównego HomeLaba (`~/docker/homelab`) i mogą być zarządzane niezależnie.
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_mediastack.sh)
-
 ```
 
 **Dostępne kontenery do wyboru w kreatorze `[1/6 – 6/6]`:**
@@ -327,9 +325,8 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnyc
 
 Jeśli chcesz zresetować wybrane środowisko (albo oba naraz), usunąć jego kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh)
-
 ```
 
 **Menu wyboru i zabezpieczenia deinstalatora:**
@@ -356,24 +353,22 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 * **Sprawdzenie temperatury CPU, dysku NVMe oraz obrotów Active Coolera:**
 
-```
+```bash
 rpi-temp
 # lub podgląd na żywo co 2 sekundy:
 watch -n 2 rpi-temp
-
 ```
 
 * **Pełna diagnostyka i reset konfiguracji wentylatora (w przypadku pracy na 100% obrotów):**
   Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
 
-```
+```bash
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh)
-
 ```
 
 * **Sprawdzenie czy nocny Auto-Update systemu (03:30) został przeprowadzony:**
 
-```
+```bash
 # 1. Podgląd pełnego logu z nocnej aktualizacji (update, full-upgrade, autoremove, autoclean, docker prune):
 tail -n 50 /var/log/auto-update.log
 
@@ -382,12 +377,11 @@ sudo journalctl --since "03:29:00" --until "03:45:00" | grep -iE "cron|apt|upgra
 
 # 3. Historia faktycznie zaktualizowanych lub usuniętych pakietów APT:
 tail -n 30 /var/log/apt/history.log
-
 ```
 
 * **Sprawdzenie czy aktualizacja kontenerów Docker (Watchtower o 04:00) została przeprowadzona:**
 
-```
+```bash
 # 1. Logi działania kontenera Watchtower:
 docker logs watchtower
 
@@ -396,19 +390,17 @@ docker inspect --format='{{.Name}} -> Utworzony: {{.Created}}' $(docker ps -a -q
 
 # 3. Ręczne wymuszenie natychmiastowego sprawdzenia i aktualizacji wszystkich kontenerów (test jednorazowy):
 sudo docker run --rm -e DOCKER_API_VERSION=1.44 -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower --run-once
-
 ```
 
 * **Sprawdzenie statusu uruchomionych kontenerów:**
 
-```
+```bash
 docker ps
-
 ```
 
 * **Podgląd logów poszczególnych kontenerów:**
 
-```
+```bash
 # HomeLab & NAS:
 docker logs pihole
 docker logs samba-nas
@@ -425,12 +417,11 @@ docker logs prowlarr
 docker logs sonarr
 docker logs radarr
 docker logs bazarr
-
 ```
 
 * **Restart lub zatrzymanie usług:**
 
-```
+```bash
 # HomeLab & NAS:
 cd ~/docker/homelab
 docker compose restart   # lub: docker compose down
@@ -438,17 +429,15 @@ docker compose restart   # lub: docker compose down
 # Media Stack (jeśli zainstalowany):
 cd ~/docker/mediastack
 docker compose restart   # lub: docker compose down
-
 ```
 
 * **Ręczna zmiana hasła do FileBrowsera z poziomu terminala:**
 
-```
+```bash
 cd ~/docker/homelab
 docker compose stop filebrowser
 docker compose run --rm filebrowser users update admin --password "TwojeNoweHaslo123" --database /database/filebrowser.db
 docker compose start filebrowser
-
 ```
 
 ## 💰 Szacowane oszczędności i zwrot z inwestycji (ROI w domu)
@@ -457,13 +446,13 @@ W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć st
 
 | Usługa w domu | Komercyjny odpowiednik | Zestaw na RPi 5 | Roczna oszczędność | 
 | ----- | ----- | ----- | ----- | 
-| **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (\~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
-| **Menedżer haseł** | Bitwarden Premium / 1Password (\~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
-| **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (\~80–200 PLN/rok) | **Pi-hole + Twingate** (darmowy do 5 osób) | **80 – 200 PLN** | 
-| **Platformy VOD (opcjonalnie)** | 2–4 serwisy streamingowe (\~100–200 PLN/mies.) | **Jellyfin + pakiet \*arr** (0 PLN) | **1 200 – 2 400 PLN** | 
-| **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (\~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
-| **RAZEM (bez Media Stacka)** | **\~690 – 1 040 PLN / rok** | **\~70 PLN / rok** | **\~620 – 970 PLN / rok** | 
-| **RAZEM (z Media Stackiem)** | **\~1 890 – 3 440 PLN / rok** | **\~70 PLN / rok** | **\~1 820 – 3 370 PLN / rok** | 
+| **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
+| **Menedżer haseł** | Bitwarden Premium / 1Password (~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
+| **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (~80–200 PLN/rok) | **Pi-hole + Twingate** (darmowy do 5 osób) | **80 – 200 PLN** | 
+| **Platformy VOD (opcjonalnie)** | 2–4 serwisy streamingowe (~100–200 PLN/mies.) | **Jellyfin + pakiet \*arr** (0 PLN) | **1 200 – 2 400 PLN** | 
+| **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
+| **RAZEM (bez Media Stacka)** | **~690 – 1 040 PLN / rok** | **~70 PLN / rok** | **~620 – 970 PLN / rok** | 
+| **RAZEM (z Media Stackiem)** | **~1 890 – 3 440 PLN / rok** | **~70 PLN / rok** | **~1 820 – 3 370 PLN / rok** | 
 
 **Szacowany czas zwrotu sprzętu** (przy koszcie zakupu brutto RPi 5, M.2 HAT+, dysku NVMe 1–2 TB, Active Coolera i zasilacza 27W na poziomie ok. **1 100 – 1 400 PLN**):
 
@@ -471,7 +460,7 @@ W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć st
 
 * **Z Media Stackiem:** zwrot w **5 – 8 miesięcy**.
 
-* **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **\~430 PLN rocznie** na energii elektrycznej.
+* **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **~430 PLN rocznie** na energii elektrycznej.
 
 *(Wskazówka: Ponieważ zestaw pracuje na pojedynczym dysku NVMe, najważniejsze pliki z `/srv/nas/pliki` warto okresowo kopiować na zewnętrzny dysk USB zgodnie z zasadą backupu 3-2-1).*
 
