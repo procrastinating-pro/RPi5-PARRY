@@ -1,6 +1,6 @@
-# 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Media Stack + Auto-Maintenance)
+# 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Gitea**, **Watchtower**) oraz opcjonalnego, odizolowanego **Media Stacka** (**Jellyfin**, **qBittorrent**, **Prowlarr**, **Sonarr**, **Radarr**, **Bazarr**).
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Gitea**, **Watchtower**).
 
 ## 🛠️ Sprzęt użyty w projekcie (Hardware)
 
@@ -26,8 +26,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Gitea (+ PostgreSQL)** oraz **Watchtower** (auto-update o 04:00). | 
 | **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker Pi-hole: dodaje gotowe pakiety **HaGeZi** (Multi PRO / PRO++ / Ultimate + TIF w formacie RPZ) chroniące przed reklamami, telemetrią, **malware** oraz **phishingiem**, a także klasyczny zestaw lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
-| **`setup_mediastack.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Opcjonalny, niezależny kreator **Media Stacka** (Czysty Bash `[T/n]`, katalog `~/docker/mediastack`): **Jellyfin**, **qBittorrent** (z wbudowanym powiadomieniem prawnym P2P i potwierdzeniem `[t/N]`), **Prowlarr**, **Sonarr**, **Radarr** i **Bazarr** w układzie hardlinków. | 
-| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z menu wyboru zakresu (**tylko HomeLab & NAS**, **tylko Media Stack** lub **oba środowiska**) i podwójnym potwierdzeniem: usuwa wybrane kontenery, nieużywane sieci/obrazy i katalogi konfiguracyjne, przywraca `systemd-resolved` (przy usuwaniu HomeLaba) oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki` lub samo `/media` i `/downloads`). | 
+| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: usuwa kontenery HomeLab & NAS, nieużywane sieci/obrazy i katalog konfiguracyjny `~/docker/homelab`, przywraca `systemd-resolved` oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, przedłużoną komorą na taśmę PCIe, uniesionym dachem z logo (*Badge*) oraz nóżkami dystansowymi pod druk z elastycznego TPU. | 
@@ -148,7 +147,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 6. **Gitea + PostgreSQL:** Lekki, lokalny serwer Git (self-hosted alternatywa dla GitHuba/GitLaba) z dedykowaną bazą **PostgreSQL 16**, automatycznie generowanym hasłem bazy oraz obsługą klonowania po HTTP (`3000`) i SSH (`2222`).
 
-* **\[Extra\] Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów (w tym opcjonalnego Media Stacka) i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
+* **\[Extra\] Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
 
 ### 🧱 Dodawanie list blokowania (Blocklist) do Pi-hole (`add_pihole_blocklists.sh`)
 
@@ -190,7 +189,7 @@ Aby blokowanie reklam przez **Pi-hole** oraz lokalne domeny (`.home`) działały
 
 ### 🌍 Lokalne domeny DNS (Konfiguracja w `docker-compose.yml`)
 
-Skrypt `setup_homelab.sh` automatycznie pyta o lokalne domeny podczas instalacji Pi-hole (domyślnie: `nas.home pihole.home rpi.home vault.home git.home`) i dopisuje je bezpośrednio do pliku `~/docker/homelab/docker-compose.yml`. Jeśli planujesz uruchomić również opcjonalny **Media Stack**, możesz od razu dopisać domenę `media.home` do tej listy.
+Skrypt `setup_homelab.sh` automatycznie pyta o lokalne domeny podczas instalacji Pi-hole (domyślnie: `nas.home pihole.home rpi.home vault.home git.home`) i dopisuje je bezpośrednio do pliku `~/docker/homelab/docker-compose.yml`.
 
 Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedytować plik `~/docker/homelab/docker-compose.yml` (sekcja `extra_hosts` oraz `FTLCONF_dns_hosts` w usłudze `pihole`) i przeładować kontenery komendą `docker compose up -d`.
 
@@ -210,7 +209,7 @@ Gdy `setup_homelab.sh` uruchomi już kontener `twingate-connector`, dokończ kon
 
      * **Serwer RPi 5 / sieć LAN:** adres `192.168.1.250` (tylko Raspberry Pi) lub `192.168.1.0/24` (cała sieć domowa, np. panel routera).
 
-     * **Lokalne domeny `.home`:** adres `*.home` – dzięki pracy w trybie `network_mode: host` Connector odpytuje lokalnego Pi-hole'a i rozwiązuje `nas.home`, `pihole.home`, `vault.home`, `git.home` czy `media.home`.
+     * **Lokalne domeny `.home`:** adres `*.home` – dzięki pracy w trybie `network_mode: host` Connector odpytuje lokalnego Pi-hole'a i rozwiązuje `nas.home`, `pihole.home`, `vault.home` oraz `git.home`.
 
 3. **Klient na telefonie / laptopie:**
 
@@ -234,69 +233,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 * Tworzy polecenie diagnostyczne `rpi-temp`, pozwalające w dowolnej chwili sprawdzić temperatury oraz obroty wentylatora.
 
-## 🎬 Krok 5 (Opcjonalny): Instalacja niezależnego Media Stacka (`setup_mediastack.sh`)
-
-Usługi multimedialne zostały wydzielone do osobnego skryptu instalowanego w dedykowanym katalogu `~/docker/mediastack`, dzięki czemu nie nadpisują konfiguracji głównego HomeLaba (`~/docker/homelab`) i mogą być zarządzane niezależnie.
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_mediastack.sh)
-```
-
-**Dostępne kontenery do wyboru w kreatorze `[1/6 – 6/6]`:**
-
-1. **Jellyfin:** Domowy serwer multimediów i wideo z mapowaniem sprzętowej akceleracji `/dev/dri` oraz automatycznie przygotowaną strukturą folderów (`/media/movies`, `/media/tv`, `/media/music`).
-
-2. **qBittorrent:** Klient sieci BitTorrent z interfejsem WebUI (domyślnie na porcie `8085`, aby nie kolidować z Pi-hole) oraz obsługą portów `6881` TCP/UDP.
-
-   * **⚠️ Ostrzeżenie prawne P2P:** Przed instalacją qBittorrenta skrypt wyświetla szczegółową informację o działaniu protokołu BitTorrent (automatycznym seedowaniu w trakcie pobierania oraz różnicy między art. 23 a art. 116 ustawy o prawie autorskim w Polsce) i wymaga jawnego potwierdzenia `[t/N]`. Odrzucenie komunikatu pomija wyłącznie qBittorrenta, instalując pozostałe wybrane kontenery.
-
-3. **Prowlarr:** Centralny menedżer indekserów, który automatycznie synchronizuje listę wyszukiwarek z aplikacjami Sonarr i Radarr.
-
-4. **Sonarr:** Automatyzacja katalogowania i pobierania kolekcji seriali TV (z obsługą błyskawicznych *hardlinków* na dysku NVMe).
-
-5. **Radarr:** Automatyzacja katalogowania i pobierania kolekcji filmów (z obsługą *hardlinków*).
-
-6. **Bazarr:** Automatyczne wyszukiwanie i pobieranie dopasowanych napisów (np. polskich) do filmów i seriali zgromadzonych w Radarr oraz Sonarr.
-
-### ⚙️ Konfiguracja i spięcie pakietu \*arr + Jellyfin (Hardlinki TRaSH-Guides)
-
-Skrypt `setup_mediastack.sh` automatycznie tworzy na dysku NVMe wspólną strukturę katalogów:
-
-* `/srv/nas/pliki/downloads/complete` (widoczny w kontenerach jako `/data/downloads/complete`)
-
-* `/srv/nas/pliki/media/movies` (widoczny w kontenerach jako `/data/media/movies`)
-
-* `/srv/nas/pliki/media/tv` (widoczny w kontenerach jako `/data/media/tv`)
-
-Dzięki wspólnemu wolumenowi `/data`, przenoszenie plików z katalogu pobrań do biblioteki Jellyfin przez Sonarr/Radarr odbywa się poprzez **twarde dowiązania (hardlinks)** – trwa ułamek sekundy, nie zajmuje podwójnie miejsca i nie obciąża dysku NVMe zbędnym kopiowaniem.
-
-**Krótka ściąga po pierwszym uruchomieniu:**
-
-1. **qBittorrent (`:8085`, jeśli zainstalowany):** Odczytaj tymczasowe hasło z logów komendą `sudo docker logs qbittorrent`, zaloguj się jako `admin`, a następnie w *Tools -> Options -> Web UI* ustaw własne hasło. W zakładce *Downloads* upewnij się, że domyślna ścieżka zapisu (*Default Save Path*) to `/data/downloads/complete`.
-
-2. **Sonarr (`:8989`) i Radarr (`:7878`):**
-
-   * W *Settings -> Media Management -> Add Root Folder* wybierz odpowiednio `/data/media/tv` (w Sonarr) oraz `/data/media/movies` (w Radarr).
-
-   * W *Settings -> Download Clients* dodaj wybranego klienta pobierania (np. **qBittorrent**: Host `qbittorrent`, Port `8085`, albo alternatywnego klienta Usenet/Debrid).
-
-3. **Prowlarr (`:9696`):**
-
-   * W *Settings -> Apps* dodaj **Sonarr** (`http://sonarr:8989`) oraz **Radarr** (`http://radarr:7878`), wklejając ich klucze API (*Settings -> General* w Sonarr/Radarr).
-
-4. **Bazarr (`:6767`):**
-
-   * W *Settings -> Sonarr* oraz *Settings -> Radarr* połącz obie aplikacje po kluczu API, a w *Settings -> Languages* ustaw język polski jako domyślny profil napisów.
-
-5. **Jellyfin (`:8096`):**
-
-   * W *Panelu administracyjnym -> Biblioteki* dodaj bibliotekę **Filmy** wskazującą na `/data/media/movies` oraz bibliotekę **Programy (Shows)** wskazującą na `/data/media/tv`.
-
 ## 🌐 Dostęp do usług po instalacji
 
 Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnych domen DNS:
-
-### HomeLab & NAS (`setup_homelab.sh`)
 
 | Usługa | Adres w sieci LAN / Domena `.home` | Domyślne logowanie / Uwagi | 
 | ----- | ----- | ----- | 
@@ -308,46 +247,19 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnyc
 | **Twingate** | Działa w tle (`network_mode: host`) | Logi połączenia: `sudo docker logs twingate-connector`. | 
 | **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | Logi aktualizacji: `sudo docker logs watchtower`. | 
 
-### Media Stack – opcjonalny (`setup_mediastack.sh`)
-
-*(Adresy z domeną `media.home` działają po dopisaniu jej do listy lokalnych domen w Pi-hole).*
-
-| Usługa | Adres w sieci LAN | Domyślne logowanie / Uwagi | 
-| ----- | ----- | ----- | 
-| **Jellyfin** | `http://192.168.1.250:8096` (`http://media.home:8096`) | Kreator przy pierwszym wejściu (biblioteki: `/data/media/movies`, `/data/media/tv`). | 
-| **qBittorrent** | `http://192.168.1.250:8085` (`http://media.home:8085`) | Login: `admin`, hasło tymczasowe: `sudo docker logs qbittorrent`. | 
-| **Prowlarr** | `http://192.168.1.250:9696` (`http://media.home:9696`) | Centralny menedżer indekserów (ustaw hasło przy pierwszym wejściu). | 
-| **Sonarr** | `http://192.168.1.250:8989` (`http://media.home:8989`) | Seriale TV (Root Folder: `/data/media/tv`). | 
-| **Radarr** | `http://192.168.1.250:7878` (`http://media.home:7878`) | Filmy (Root Folder: `/data/media/movies`). | 
-| **Bazarr** | `http://192.168.1.250:6767` (`http://media.home:6767`) | Automatyczne napisy (połącz z Sonarr i Radarr po API). | 
-
 ## 🗑️ Deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
 
-Jeśli chcesz zresetować wybrane środowisko (albo oba naraz), usunąć jego kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
+Jeśli chcesz zresetować środowisko HomeLab & NAS, usunąć kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh)
 ```
 
-**Menu wyboru i zabezpieczenia deinstalatora:**
+**Zabezpieczenia deinstalatora:**
 
-1. **Wybór zakresu (`1–4`):**
+1. **Potwierdzenie usunięcia kontenerów (`TAK`):** Skrypt zatrzymuje i usuwa kontenery z `~/docker/homelab` (`docker compose down -v`), czyści nieużywane sieci i obrazy (`docker image prune -a -f`), usuwa katalog konfiguracyjny oraz przywraca domyślną konfigurację `systemd-resolved` (port `53`).
 
-   * `1)` **Tylko HomeLab & NAS** – usuwa kontenery i katalog `~/docker/homelab` (Pi-hole, Samba, FileBrowser, Twingate, Vaultwarden, Gitea, Watchtower).
-
-   * `2)` **Tylko Media Stack** – usuwa kontenery i katalog `~/docker/mediastack` (Jellyfin, qBittorrent, Prowlarr, Sonarr, Radarr, Bazarr) bez ruszania HomeLaba i bez naruszania działającego Pi-hole.
-
-   * `3)` **Oba środowiska** – usuwa jednocześnie HomeLab & NAS oraz Media Stack.
-
-   * `4)` **Anuluj** – bezpieczne wyjście ze skryptu.
-
-2. **Potwierdzenie usunięcia kontenerów (`TAK`):** Po wyborze zakresu skrypt zatrzymuje i usuwa wybrane kontenery (`docker compose down -v`), czyści wyłącznie nieużywane sieci i obrazy (`docker image prune -a -f`), a katalogi konfiguracyjne kasuje tylko dla wybranego zakresu. Domyślna konfiguracja `systemd-resolved` (port `53`) jest przywracana **wyłącznie przy usuwaniu HomeLaba** (opcja `1` lub `3`).
-
-3. **Ochrona danych na dysku NAS (`USUN_MEDIA` / `USUN_DANE`):** Pliki w `/srv/nas/pliki` są domyślnie **chronione**:
-
-   * Przy usuwaniu **samego Media Stacka** (opcja `2`) skrypt pyta wyłącznie o wykasowanie podkatalogów `/srv/nas/pliki/media` oraz `/srv/nas/pliki/downloads` (wymaga wpisania frazy `USUN_MEDIA`).
-
-   * Przy usuwaniu **HomeLaba** lub **obu środowisk** (opcja `1` lub `3`) skrypt pyta o usunięcie całej zawartości `/srv/nas/pliki` (wymaga wpisania frazy `USUN_DANE`).
+2. **Ochrona danych na dysku NAS (`USUN_DANE`):** Pliki w `/srv/nas/pliki` są domyślnie **chronione** – ich wykasowanie wymaga osobnego, jawnego potwierdzenia frazą `USUN_DANE`.
 
 ## 🛠️ Przydatne komendy diagnostyczne
 
@@ -401,7 +313,6 @@ docker ps
 * **Podgląd logów poszczególnych kontenerów:**
 
 ```bash
-# HomeLab & NAS:
 docker logs pihole
 docker logs samba-nas
 docker logs filebrowser-nas
@@ -409,25 +320,12 @@ docker logs vaultwarden
 docker logs gitea
 docker logs gitea-db
 docker logs twingate-connector
-
-# Media Stack (jeśli zainstalowany):
-docker logs jellyfin
-docker logs qbittorrent
-docker logs prowlarr
-docker logs sonarr
-docker logs radarr
-docker logs bazarr
 ```
 
 * **Restart lub zatrzymanie usług:**
 
 ```bash
-# HomeLab & NAS:
 cd ~/docker/homelab
-docker compose restart   # lub: docker compose down
-
-# Media Stack (jeśli zainstalowany):
-cd ~/docker/mediastack
 docker compose restart   # lub: docker compose down
 ```
 
@@ -442,23 +340,19 @@ docker compose start filebrowser
 
 ## 💰 Szacowane oszczędności i zwrot z inwestycji (ROI w domu)
 
-W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subskrypcje w chmurze i serwisy zewnętrzne o ok. **620 – 970 PLN rocznie** w wariancie podstawowym (HomeLab & NAS) oraz ok. **1 820 – 3 370 PLN rocznie** przy wykorzystaniu opcjonalnego Media Stacka.
+W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subskrypcje w chmurze i serwisy zewnętrzne o ok. **620 – 970 PLN rocznie**.
 
 | Usługa w domu | Komercyjny odpowiednik | Zestaw na RPi 5 | Roczna oszczędność | 
 | ----- | ----- | ----- | ----- | 
 | **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
 | **Menedżer haseł** | Bitwarden Premium / 1Password (~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
 | **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (~80–200 PLN/rok) | **Pi-hole + Twingate** (darmowy do 5 osób) | **80 – 200 PLN** | 
-| **Platformy VOD (opcjonalnie)** | 2–4 serwisy streamingowe (~100–200 PLN/mies.) | **Jellyfin + pakiet \*arr** (0 PLN) | **1 200 – 2 400 PLN** | 
 | **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
-| **RAZEM (bez Media Stacka)** | **~690 – 1 040 PLN / rok** | **~70 PLN / rok** | **~620 – 970 PLN / rok** | 
-| **RAZEM (z Media Stackiem)** | **~1 890 – 3 440 PLN / rok** | **~70 PLN / rok** | **~1 820 – 3 370 PLN / rok** | 
+| **RAZEM** | **~690 – 1 040 PLN / rok** | **~70 PLN / rok** | **~620 – 970 PLN / rok** | 
 
 **Szacowany czas zwrotu sprzętu** (przy koszcie zakupu brutto RPi 5, M.2 HAT+, dysku NVMe 1–2 TB, Active Coolera i zasilacza 27W na poziomie ok. **1 100 – 1 400 PLN**):
 
-* **Tylko HomeLab & NAS:** zwrot po **1,5 – 2 latach**.
-
-* **Z Media Stackiem:** zwrot w **5 – 8 miesięcy**.
+* **HomeLab & NAS:** zwrot po **1,5 – 2 latach**.
 
 * **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **~430 PLN rocznie** na energii elektrycznej.
 
