@@ -100,6 +100,7 @@ fi
 
 if [[ "$OPT_TG" =~ ^[TtYy]$ ]]; then
     echo -e "\n${YELLOW}[*] Konfiguracja Twingate Connector:${NC}"
+    echo -e "   ${CYAN}(Tokeny wygenerujesz w https://admin.twingate.com -> Remote Network -> Deploy Connector -> Docker)${NC}"
     while true; do
         read -p "   -> Nazwa sieci Twingate (np. 'twojanazwa' z twojanazwa.twingate.com): " TG_NET
         if [ -n "$TG_NET" ]; then break; else echo -e "${RED}      Nazwa sieci nie może być pusta!${NC}"; fi
@@ -126,11 +127,6 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
     GITEA_PORT=${GITEA_PORT:-3000}
     read -p "   -> Port SSH dla Gitea [2222]: " GITEA_SSH_PORT
     GITEA_SSH_PORT=${GITEA_SSH_PORT:-2222}
-    if command -v openssl >/dev/null 2>&1; then
-        GITEA_DB_PASS=$(openssl rand -hex 16)
-    else
-        GITEA_DB_PASS=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
-    fi
 fi
 
 echo -e "\n${CYAN}======================================================${NC}"
@@ -176,7 +172,7 @@ if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
         if [ -z "$FTL_HOSTS_LIST" ]; then
             FTL_HOSTS_LIST="${RPI_IP} ${dom}"
         else
-            FTL_HOSTS_LIST="${FTL_HOSTS_LIST},${RPI_IP} ${dom}"
+            FTL_HOSTS_LIST="${FTL_HOSTS_LIST};${RPI_IP} ${dom}"
         fi
     done
 
@@ -250,6 +246,10 @@ fi
 
 # --- TWINGATE ---
 if [[ "$OPT_TG" =~ ^[TtYy]$ ]]; then
+    # W trybie network_mode: host sysctl dla ICMP ping ustawia się na hoście, nie w kontenerze
+    echo "net.ipv4.ping_group_range = 0 2147483647" | sudo tee /etc/sysctl.d/99-twingate.conf >/dev/null
+    sudo sysctl -w net.ipv4.ping_group_range="0 2147483647" >/dev/null 2>&1 || true
+
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
   twingate:
@@ -263,8 +263,6 @@ if [[ "$OPT_TG" =~ ^[TtYy]$ ]]; then
       - TWINGATE_REFRESH_TOKEN=${TG_REFRESH}
       - TWINGATE_DNS=${RPI_IP}
       - TWINGATE_LABEL_HOSTNAME=$(hostname)
-    sysctls:
-      - net.ipv4.ping_group_range=0 2147483647
     restart: unless-stopped
 EOF
 fi
@@ -293,6 +291,20 @@ fi
 if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
     mkdir -p "$DOCKER_DIR/gitea/data" "$DOCKER_DIR/gitea/postgres"
     sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/gitea/data"
+
+    GITEA_PASS_FILE="$DOCKER_DIR/gitea/.db_pass"
+    if [ -f "$GITEA_PASS_FILE" ]; then
+        GITEA_DB_PASS=$(cat "$GITEA_PASS_FILE")
+    else
+        if command -v openssl >/dev/null 2>&1; then
+            GITEA_DB_PASS=$(openssl rand -hex 16)
+        else
+            GITEA_DB_PASS=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+        fi
+        echo "$GITEA_DB_PASS" > "$GITEA_PASS_FILE"
+        chmod 600 "$GITEA_PASS_FILE"
+    fi
+
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
   gitea-db:
@@ -361,6 +373,7 @@ if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
 EOF
 fi
 
+chmod 600 "$DOCKER_DIR/docker-compose.yml"
 echo -e "${GREEN}[+] Plik $DOCKER_DIR/docker-compose.yml został wygenerowany.${NC}"
 
 # ================= 6. INICJALIZACJA BAZY FILEBROWSERA =================
