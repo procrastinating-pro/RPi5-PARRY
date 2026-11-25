@@ -1,6 +1,6 @@
 # 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Gitea**, **Watchtower**).
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Gitea**, **Caddy HTTPS**, **Watchtower**).
 
 ## 🛠️ Sprzęt użyty w projekcie (Hardware)
 
@@ -24,7 +24,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | ----- | ----- | ----- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
-| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Gitea (+ PostgreSQL)** oraz **Watchtower** (auto-update o 04:00). | 
+| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS dla `.home`)** oraz **Watchtower** (auto-update o 04:00). | 
 | **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker Pi-hole: dodaje gotowe pakiety **HaGeZi** (Multi PRO / PRO++ / Ultimate + TIF w formacie RPZ) chroniące przed reklamami, telemetrią, **malware** oraz **phishingiem**, a także klasyczny zestaw lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
 | **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: usuwa kontenery HomeLab & NAS, nieużywane sieci/obrazy i katalog konfiguracyjny `~/docker/homelab`, przywraca `systemd-resolved` oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
@@ -133,7 +133,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
 
-**Dostępne kontenery do wyboru w kreatorze `[1/6 – 6/6 + Extra]`:**
+**Dostępne kontenery do wyboru w kreatorze `[1/7 – 7/7 + Extra]`:**
 
 1. **Pi-hole:** Blokowanie reklam w całej sieci LAN oraz lokalny serwer DNS (automatycznie zwalnia port `53` z `systemd-resolved` i konfiguruje lokalne domeny `.home`).
 
@@ -143,11 +143,30 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 4. **Twingate Connector:** Bezpieczny, zdalny dostęp Zero-Trust spoza domu w trybie `network_mode: host` (bez konieczności przekierowywania portów na routerze i z pełną obsługą lokalnych domen `.home`).
 
-5. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden.
+5. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden (przy włączonym Caddy automatycznie korzysta z `https://vault.home` wymaganego przez WebCrypto).
 
-6. **Gitea + PostgreSQL:** Lekki, lokalny serwer Git (self-hosted alternatywa dla GitHuba/GitLaba) z dedykowaną bazą **PostgreSQL 16**, automatycznie generowanym hasłem bazy oraz obsługą klonowania po HTTP (`3000`) i SSH (`2222`).
+6. **Gitea + PostgreSQL:** Lekki, lokalny serwer Git (self-hosted alternatywa dla GitHuba/GitLaba) z dedykowaną bazą **PostgreSQL 16**, trwale zapisywanym hasłem bazy (`~/docker/homelab/gitea/.db_pass`) oraz obsługą klonowania po HTTPS/HTTP (`3000`) i SSH (`2222`).
+
+7. **Caddy Reverse Proxy (Lokalny HTTPS):** Automatycznie generuje `Caddyfile` dla wszystkich wybranych usług i udostępnia je po szyfrowanym połączeniu **HTTPS** bez wpisywania numerów portów (`https://pihole.home`, `https://nas.home`, `https://vault.home`, `https://git.home`), wykorzystując wbudowane lokalne CA (`tls internal`). Po uruchomieniu eksportuje certyfikat `homelab-root-ca.crt` do `~/docker/homelab/caddy/` oraz na dysk NAS (`/srv/nas/pliki/`).
 
 * **\[Extra\] Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
+
+### 🔒 Lokalny HTTPS (Caddy) – jednorazowa instalacja certyfikatu CA
+
+Ponieważ Caddy wystawia certyfikaty dla lokalnych domen `.home` z własnego, lokalnego urzędu certyfikacji (`tls internal`), wystarczy **raz** dodać plik `homelab-root-ca.crt` (dostępny w `~/docker/homelab/caddy/homelab-root-ca.crt` oraz bezpośrednio w `/srv/nas/pliki/homelab-root-ca.crt`) do zaufanych na swoich urządzeniach – dzięki temu znikną ostrzeżenia w przeglądarce i poprawnie zadziałają aplikacje Bitwarden/Vaultwarden:
+
+* **Ubuntu / Debian:**
+  ```bash
+  sudo cp homelab-root-ca.crt /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  ```
+  *(W Chrome/Firefox dodatkowo: Ustawienia → Certyfikaty → Urzędy certyfikacji → Importuj → zaznacz zaufanie dla witryn).*
+
+* **Windows:** Kliknij dwukrotnie `homelab-root-ca.crt` → *Zainstaluj certyfikat* → *Komputer lokalny* → *Umieść wszystkie certyfikaty w następującym magazynie* → **Zaufane główne urzędy certyfikacji**.
+
+* **Android:** Pobierz plik (np. przez FileBrowser) → *Ustawienia → Zabezpieczenia → Szyfrowanie i dane logowania → Zainstaluj certyfikat → Certyfikat CA* → wskaż `homelab-root-ca.crt`.
+
+* **iOS:** Pobierz plik na telefon, zainstaluj profil w *Ustawienia → Ogólne → VPN i zarządzanie urządzeniami*, a następnie włącz pełne zaufanie w *Ustawienia → Ogólne → To urządzenie → Ustawienia zaufania certyfikatów*.
 
 ### 🧱 Dodawanie list blokowania (Blocklist) do Pi-hole (`add_pihole_blocklists.sh`)
 
@@ -191,7 +210,7 @@ Aby blokowanie reklam przez **Pi-hole** oraz lokalne domeny (`.home`) działały
 
 Skrypt `setup_homelab.sh` automatycznie pyta o lokalne domeny podczas instalacji Pi-hole (domyślnie: `nas.home pihole.home rpi.home vault.home git.home`) i dopisuje je bezpośrednio do pliku `~/docker/homelab/docker-compose.yml`.
 
-Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedytować plik `~/docker/homelab/docker-compose.yml` (sekcja `extra_hosts` oraz `FTLCONF_dns_hosts` w usłudze `pihole`) i przeładować kontenery komendą `docker compose up -d`.
+Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedytować plik `~/docker/homelab/docker-compose.yml` (sekcja `extra_hosts` oraz `FTLCONF_dns_hosts` rozdzielone średnikiem w usłudze `pihole`) i przeładować kontenery komendą `docker compose up -d`.
 
 *(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
 
@@ -213,7 +232,7 @@ Gdy `setup_homelab.sh` uruchomi już kontener `twingate-connector`, dokończ kon
 
 3. **Klient na telefonie / laptopie:**
 
-   * Zainstaluj aplikację **Twingate**, zaloguj się do swojej sieci (`twojanazwa.twingate.com`), przełącz telefon na dane komórkowe i sprawdź dostęp np. do `http://192.168.1.250:8081` lub `http://pihole.home:8080/admin`.
+   * Zainstaluj aplikację **Twingate**, zaloguj się do swojej sieci (`twojanazwa.twingate.com`), przełącz telefon na dane komórkowe i sprawdź dostęp np. do `https://nas.home` lub `https://pihole.home/admin` (albo po IP: `http://192.168.1.250:8081`).
 
 *(Wskazówka: Jeśli domeny `*.home` nie rozwiązują się zdalnie, sprawdź w `/etc/resolv.conf` na Raspberry Pi, czy jako serwer DNS wpisany jest `127.0.0.1` lub `192.168.1.250`).*
 
@@ -235,17 +254,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 ## 🌐 Dostęp do usług po instalacji
 
-Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnych domen DNS:
+Przy założeniu domyślnego adresu IP `192.168.1.250`, domyślnych domen `.home` oraz włączonego **Caddy (HTTPS)**:
 
-| Usługa | Adres w sieci LAN / Domena `.home` | Domyślne logowanie / Uwagi | 
-| ----- | ----- | ----- | 
-| **Pi-hole** | `http://pihole.home:8080/admin` (`http://192.168.1.250:8080/admin`) | Hasło podane w konfiguratorze Pi-hole. | 
-| **Samba NAS (SMB)** | Linux: `smb://nas.home/DyskNAS` / Windows: `\\nas.home\DyskNAS` | Login i hasło Samby podane w konfiguratorze. | 
-| **FileBrowser** | `http://nas.home:8081` (`http://192.168.1.250:8081`) | Login: `admin` + własne hasło (min. 12 znaków). | 
-| **Vaultwarden** | `http://vault.home:8222` (`http://192.168.1.250:8222`) | Utwórz konto w przeglądarce (wymaga HTTPS/Twingate dla WebCrypto). | 
-| **Gitea** | `http://git.home:3000` (`http://192.168.1.250:3000`) | SSH: port `2222`. Przy pierwszym wejściu kliknij *Zainstaluj Gitea* (dane PostgreSQL są już uzupełnione). | 
-| **Twingate** | Działa w tle (`network_mode: host`) | Logi połączenia: `sudo docker logs twingate-connector`. | 
-| **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | Logi aktualizacji: `sudo docker logs watchtower`. | 
+| Usługa | Adres HTTPS (Caddy) | Adres bezpośredni HTTP / SMB | Domyślne logowanie / Uwagi | 
+| ----- | ----- | ----- | ----- | 
+| **Pi-hole** | `https://pihole.home/admin` | `http://192.168.1.250:8080/admin` | Hasło podane w konfiguratorze Pi-hole. | 
+| **FileBrowser** | `https://nas.home` | `http://192.168.1.250:8081` | Login: `admin` + własne hasło (min. 12 znaków). | 
+| **Vaultwarden** | `https://vault.home` | `http://192.168.1.250:8222` | Utwórz konto przez `https://vault.home` (HTTPS wymagane przez WebCrypto). | 
+| **Gitea** | `https://git.home` | `http://192.168.1.250:3000` | SSH: port `2222`. Przy pierwszym wejściu kliknij *Zainstaluj Gitea* (dane PostgreSQL są już uzupełnione). | 
+| **Samba NAS (SMB)** | — | Linux: `smb://nas.home/DyskNAS` / Windows: `\\nas.home\DyskNAS` | Login i hasło Samby podane w konfiguratorze. | 
+| **Caddy (HTTPS)** | Porty `80` i `443` | — | Certyfikat CA do pobrania: `/srv/nas/pliki/homelab-root-ca.crt`. | 
+| **Twingate** | Działa w tle (`network_mode: host`) | — | Logi połączenia: `sudo docker logs twingate-connector`. | 
+| **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | — | Logi aktualizacji: `sudo docker logs watchtower`. | 
 
 ## 🗑️ Deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
 
@@ -319,6 +339,7 @@ docker logs filebrowser-nas
 docker logs vaultwarden
 docker logs gitea
 docker logs gitea-db
+docker logs caddy
 docker logs twingate-connector
 ```
 
