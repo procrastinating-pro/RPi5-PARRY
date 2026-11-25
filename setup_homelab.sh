@@ -31,23 +31,26 @@ DOCKER_DIR=${DOCKER_DIR:-/home/$ACTUAL_USER/docker/homelab}
 
 # ================= 2. WYBÓR KONTENERÓW (T/N) =================
 echo -e "\n${YELLOW}[*] KROK 2: Wybierz kontenery do zainstalowania (T/n):${NC}"
-read -p "   -> [1/6] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
+read -p "   -> [1/7] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
 OPT_PIHOLE=${OPT_PIHOLE:-T}
 
-read -p "   -> [2/6] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
+read -p "   -> [2/7] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
 OPT_SAMBA=${OPT_SAMBA:-T}
 
-read -p "   -> [3/6] FileBrowser (Webowy menedżer plików NAS)? [T/n]: " OPT_FB
+read -p "   -> [3/7] FileBrowser (Webowy menedżer plików NAS)? [T/n]: " OPT_FB
 OPT_FB=${OPT_FB:-T}
 
-read -p "   -> [4/6] Twingate Connector (Zdalny dostęp Zero-Trust)? [t/N]: " OPT_TG
+read -p "   -> [4/7] Twingate Connector (Zdalny dostęp Zero-Trust)? [t/N]: " OPT_TG
 OPT_TG=${OPT_TG:-N}
 
-read -p "   -> [5/6] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
+read -p "   -> [5/7] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
 OPT_VW=${OPT_VW:-N}
 
-read -p "   -> [6/6] Gitea + PostgreSQL (Lokalny serwer Git)? [t/N]: " OPT_GITEA
+read -p "   -> [6/7] Gitea + PostgreSQL (Lokalny serwer Git)? [t/N]: " OPT_GITEA
 OPT_GITEA=${OPT_GITEA:-N}
+
+read -p "   -> [7/7] Caddy Reverse Proxy (Lokalny HTTPS dla domen .home)? [T/n]: " OPT_CADDY
+OPT_CADDY=${OPT_CADDY:-T}
 
 read -p "   -> [Extra] Watchtower (Auto-update kontenerów o 04:00)? [T/n]: " OPT_WT
 OPT_WT=${OPT_WT:-T}
@@ -270,6 +273,11 @@ fi
 # --- VAULTWARDEN ---
 if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
     mkdir -p "$DOCKER_DIR/vaultwarden"
+    VW_DOMAIN_ENV=""
+    if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        VW_DOMAIN_ENV="      - DOMAIN=https://vault.home"
+    fi
+
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
   vaultwarden:
@@ -281,6 +289,7 @@ if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
       - TZ=Europe/Warsaw
       - SIGNUPS_ALLOWED=true
       - WEBSOCKET_ENABLED=true
+${VW_DOMAIN_ENV}
     volumes:
       - './vaultwarden:/data'
     restart: unless-stopped
@@ -303,6 +312,14 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
         fi
         echo "$GITEA_DB_PASS" > "$GITEA_PASS_FILE"
         chmod 600 "$GITEA_PASS_FILE"
+    fi
+
+    if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        GITEA_DOMAIN="git.home"
+        GITEA_ROOT_URL="https://git.home/"
+    else
+        GITEA_DOMAIN="${RPI_IP}"
+        GITEA_ROOT_URL="http://${RPI_IP}:${GITEA_PORT}/"
     fi
 
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
@@ -339,9 +356,9 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
       - GITEA__database__NAME=gitea
       - GITEA__database__USER=gitea
       - GITEA__database__PASSWD=${GITEA_DB_PASS}
-      - GITEA__server__DOMAIN=${RPI_IP}
-      - GITEA__server__SSH_DOMAIN=${RPI_IP}
-      - GITEA__server__ROOT_URL=http://${RPI_IP}:${GITEA_PORT}/
+      - GITEA__server__DOMAIN=${GITEA_DOMAIN}
+      - GITEA__server__SSH_DOMAIN=${GITEA_DOMAIN}
+      - GITEA__server__ROOT_URL=${GITEA_ROOT_URL}
       - GITEA__server__SSH_PORT=${GITEA_SSH_PORT}
     ports:
       - "${GITEA_PORT}:3000"
@@ -350,6 +367,68 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
       - './gitea/data:/data'
       - '/etc/timezone:/etc/timezone:ro'
       - '/etc/localtime:/etc/localtime:ro'
+    restart: unless-stopped
+EOF
+fi
+
+# --- CADDY (LOKALNY HTTPS DLA DOMEN .home) ---
+if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/caddy/data" "$DOCKER_DIR/caddy/config"
+    CADDYFILE="$DOCKER_DIR/caddy/Caddyfile"
+    : > "$CADDYFILE"
+
+    if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
+        cat >> "$CADDYFILE" <<'EOF'
+pihole.home {
+    tls internal
+    reverse_proxy pihole:80
+}
+
+EOF
+    fi
+
+    if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
+        cat >> "$CADDYFILE" <<'EOF'
+nas.home {
+    tls internal
+    reverse_proxy filebrowser:80
+}
+
+EOF
+    fi
+
+    if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
+        cat >> "$CADDYFILE" <<'EOF'
+vault.home {
+    tls internal
+    reverse_proxy vaultwarden:80
+}
+
+EOF
+    fi
+
+    if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
+        cat >> "$CADDYFILE" <<'EOF'
+git.home {
+    tls internal
+    reverse_proxy gitea:3000
+}
+
+EOF
+    fi
+
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  caddy:
+    container_name: caddy
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - './caddy/Caddyfile:/etc/caddy/Caddyfile:ro'
+      - './caddy/data:/data'
+      - './caddy/config:/config'
     restart: unless-stopped
 EOF
 fi
@@ -395,16 +474,45 @@ fi
 echo -e "${YELLOW}[4/4] Uruchamianie wybranych kontenerów w tle...${NC}"
 sudo docker compose up -d
 
+# Eksport certyfikatu Root CA z Caddy (do jednorazowego wgrania na telefon/laptop)
+CA_EXPORTED=""
+if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+    echo -e "${YELLOW}[*] Oczekiwanie na wygenerowanie lokalnego certyfikatu CA przez Caddy...${NC}"
+    for i in $(seq 1 15); do
+        if sudo docker exec caddy test -f /data/caddy/pki/authorities/local/root.crt 2>/dev/null; then
+            sudo docker cp caddy:/data/caddy/pki/authorities/local/root.crt "$DOCKER_DIR/caddy/homelab-root-ca.crt"
+            sudo chown "$ACTUAL_USER:$ACTUAL_USER" "$DOCKER_DIR/caddy/homelab-root-ca.crt"
+            cp "$DOCKER_DIR/caddy/homelab-root-ca.crt" "$NAS_DIR/homelab-root-ca.crt" 2>/dev/null || true
+            CA_EXPORTED="yes"
+            echo -e "${GREEN}[+] Wyeksportowano certyfikat CA: $DOCKER_DIR/caddy/homelab-root-ca.crt${NC}"
+            break
+        fi
+        sleep 1
+    done
+    if [ -z "$CA_EXPORTED" ]; then
+        echo -e "${YELLOW}[!] Certyfikat CA jeszcze się generuje. Wyeksportujesz go ręcznie za chwilę:${NC}"
+        echo -e "    sudo docker cp caddy:/data/caddy/pki/authorities/local/root.crt $DOCKER_DIR/caddy/homelab-root-ca.crt"
+    fi
+fi
+
 echo -e "\n${CYAN}======================================================${NC}"
 echo -e "${GREEN}[SUKCES] Wybrane usługi działają w tle!${NC}"
 echo -e "Katalog danych NAS:  ${YELLOW}${NAS_DIR}${NC}"
 echo -e "Plik Compose:        ${YELLOW}${DOCKER_DIR}/docker-compose.yml${NC}"
 echo -e "------------------------------------------------------"
-[[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      http://${RPI_IP}:${PIHOLE_PORT}/admin"
+if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+    [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      https://pihole.home/admin  (lub http://${RPI_IP}:${PIHOLE_PORT}/admin)"
+    [[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  https://nas.home           (lub http://${RPI_IP}:${FB_PORT})"
+    [[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  https://vault.home         (lub http://${RPI_IP}:${VW_PORT})"
+    [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]  && echo -e "Gitea:        https://git.home           (SSH: port ${GITEA_SSH_PORT})"
+    echo -e "Certyfikat:   ${YELLOW}${DOCKER_DIR}/caddy/homelab-root-ca.crt${NC} (skopiowany też do ${NAS_DIR})"
+else
+    [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      http://${RPI_IP}:${PIHOLE_PORT}/admin"
+    [[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  http://${RPI_IP}:${FB_PORT}"
+    [[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  http://${RPI_IP}:${VW_PORT}"
+    [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]  && echo -e "Gitea:        http://${RPI_IP}:${GITEA_PORT} (SSH: port ${GITEA_SSH_PORT})"
+fi
 [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]  && echo -e "Samba SMB:    smb://${RPI_IP}/${SHARE_NAME} (Windows: \\\\${RPI_IP}\\${SHARE_NAME})"
-[[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  http://${RPI_IP}:${FB_PORT}"
-[[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  http://${RPI_IP}:${VW_PORT}"
-[[ "$OPT_GITEA" =~ ^[TtYy]$ ]]  && echo -e "Gitea:        http://${RPI_IP}:${GITEA_PORT} (SSH: port ${GITEA_SSH_PORT})"
 [[ "$OPT_TG" =~ ^[TtYy]$ ]]     && echo -e "Twingate:     Aktywny w trybie hosta (logi: sudo docker logs twingate-connector)"
 [[ "$OPT_WT" =~ ^[TtYy]$ ]]     && echo -e "Watchtower:   Aktywny (Auto-update codziennie o 04:00)"
 echo -e "${CYAN}======================================================${NC}"
