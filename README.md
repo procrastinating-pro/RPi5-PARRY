@@ -1,6 +1,13 @@
 # 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Gitea**, **Caddy HTTPS**, **Watchtower**).
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Tailscale**, **Vaultwarden**, **Gitea**, **Caddy HTTPS**, **Watchtower**).
+
+## 📝 To-Do / Roadmap
+
+- [ ] **Migracja z Twingate na Tailscale** *(w trakcie / zaplanowane w środowisku produkcyjnym)*
+  * **Powód zmiany:** Twingate działa wyłącznie jako *split-tunnel* dla jawnie zdefiniowanych zasobów (`192.168.1.250`, `*.home`), przez co na sieci komórkowej (LTE/5G) cały pozostały ruch DNS omija lokalny serwer **Pi-hole** (nie działają domowe listy blokowania reklam i malware HaGeZi; opcja *Custom DNS* w Twingate przyjmuje jedynie publiczny serwer DoH `https://...`). **Tailscale** w trybie *Subnet Router* z opcją **Override DNS servers** pozwala kierować 100% zapytań DNS z telefonu poza domem bezpośrednio przez Pi-hole na Raspberry Pi 5, bez otwierania portów na routerze i bez przekierowywania całego ruchu internetowego przez domowe łącze.
+- [ ] **Zaktualizować `uninstall_homelab.sh`** o czyszczenie katalogu `~/docker/homelab/tailscale` oraz pliku `/etc/sysctl.d/99-tailscale.conf`.
+- [ ] **Automatyczny backup konfiguracji** (bazy Vaultwarden, repozytoriów Gitea oraz ustawień Pi-hole) na zewnętrzny nośnik lub zaszyfrowane archiwum.
 
 ## 🛠️ Sprzęt użyty w projekcie (Hardware)
 
@@ -24,7 +31,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | ----- | ----- | ----- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
-| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS dla `.home`)** oraz **Watchtower** (auto-update o 04:00). | 
+| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Tailscale (VPN + Subnet Router)**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS dla `.home`)** oraz **Watchtower** (auto-update o 04:00). | 
 | **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker Pi-hole: dodaje gotowe pakiety **HaGeZi** (Multi PRO / PRO++ / Ultimate + TIF w formacie RPZ) chroniące przed reklamami, telemetrią, **malware** oraz **phishingiem**, a także klasyczny zestaw lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
 | **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: usuwa kontenery HomeLab & NAS, nieużywane sieci/obrazy i katalog konfiguracyjny `~/docker/homelab`, przywraca `systemd-resolved` oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
@@ -105,23 +112,15 @@ docker run --rm hello-world
 
 ## 🛡️ Krok 3: Instalacja usług HomeLab & NAS (`setup_homelab.sh`)
 
-### 🔑 Przed uruchomieniem: Przygotowanie tokenów Twingate (opcjonalnie)
+### 🔑 Przed uruchomieniem: Wygenerowanie klucza Tailscale Auth Key (opcjonalnie)
 
-Jeśli planujesz uruchomić zdalny dostęp **Twingate Connector**, wygeneruj tokeny **zanim** odpalisz `setup_homelab.sh` – kreator poprosi o ich wklejenie w trakcie instalacji:
+Jeśli planujesz uruchomić zdalny dostęp **Tailscale** (dostęp do sieci domowej oraz blokowanie reklam przez Pi-hole również na sieci komórkowej LTE/5G), wygeneruj klucz autoryzacyjny **zanim** odpalisz `setup_homelab.sh`:
 
-1. Zaloguj się do panelu administracyjnego **`admin.twingate.com`**.
+1. Zaloguj się do panelu administracyjnego **`https://login.tailscale.com/admin`**.
 
-2. Przejdź do *Network → Remote Networks*, kliknij **Add a Remote Network**, nazwij sieć (np. `HomeLab` lub `Dom`) i wybierz lokalizację **On-Premise**.
+2. Przejdź do *Settings → Keys* (`https://login.tailscale.com/admin/settings/keys`) i kliknij **Generate auth key**.
 
-3. Wejdź w utworzoną sieć, kliknij **Deploy Connector** i jako metodę wdrożenia wybierz **Docker**.
-
-4. Kliknij **Generate Tokens** i pozostaw otwartą kartę z trzema wartościami, o które zapyta skrypt:
-
-   * nazwą sieci (`TWINGATE_NETWORK` – np. `twojanazwa` z adresu `twojanazwa.twingate.com`),
-
-   * `TWINGATE_ACCESS_TOKEN`,
-
-   * `TWINGATE_REFRESH_TOKEN`.
+3. Skopiuj wygenerowany klucz (`tskey-auth-...`) – kreator poprosi o jego wklejenie w trakcie instalacji.
 
 ### 🚀 Uruchomienie kreatora `setup_homelab.sh`
 
@@ -131,7 +130,7 @@ Aby uruchomić podstawowe usługi domowego serwera (z możliwością wyboru `[T/
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh)
 ```
 
-*(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
+*(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, klucze oraz ścieżki z klawiatury).*
 
 **Dostępne kontenery do wyboru w kreatorze `[1/7 – 7/7 + Extra]`:**
 
@@ -141,7 +140,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 3. **FileBrowser:** Nowoczesny menedżer plików NAS przez przeglądarkę WWW (automatycznie inicjalizuje bazę i tworzy konto administratora z hasłem o dł. min. 12 znaków).
 
-4. **Twingate Connector:** Bezpieczny, zdalny dostęp Zero-Trust spoza domu w trybie `network_mode: host` (bez konieczności przekierowywania portów na routerze i z pełną obsługą lokalnych domen `.home`).
+4. **Tailscale (VPN + Subnet Router):** Bezpieczny, zdalny dostęp spoza domu w trybie `network_mode: host` (bez konieczności przekierowywania portów na routerze i działający nawet za CGNAT). Rozgłasza podsieć LAN (`192.168.1.0/24`), automatycznie włącza IP forwarding na hoście i pozwala kierować cały ruch DNS z telefonu na LTE/5G przez domowy Pi-hole (wraz z listami HaGeZi i domenami `.home`).
 
 5. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden (przy włączonym Caddy automatycznie korzysta z `https://vault.home` wymaganego przez WebCrypto).
 
@@ -156,10 +155,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 Ponieważ Caddy wystawia certyfikaty dla lokalnych domen `.home` z własnego, lokalnego urzędu certyfikacji (`tls internal`), wystarczy **raz** dodać plik `homelab-root-ca.crt` (dostępny w `~/docker/homelab/caddy/homelab-root-ca.crt` oraz bezpośrednio w `/srv/nas/pliki/homelab-root-ca.crt`) do zaufanych na swoich urządzeniach – dzięki temu znikną ostrzeżenia w przeglądarce i poprawnie zadziałają aplikacje Bitwarden/Vaultwarden:
 
 * **Ubuntu / Debian:**
+
   ```bash
   sudo cp homelab-root-ca.crt /usr/local/share/ca-certificates/
   sudo update-ca-certificates
   ```
+
   *(W Chrome/Firefox dodatkowo: Ustawienia → Certyfikaty → Urzędy certyfikacji → Importuj → zaznacz zaufanie dla witryn).*
 
 * **Windows:** Kliknij dwukrotnie `homelab-root-ca.crt` → *Zainstaluj certyfikat* → *Komputer lokalny* → *Umieść wszystkie certyfikaty w następującym magazynie* → **Zaufane główne urzędy certyfikacji**.
@@ -202,7 +203,7 @@ Aby blokowanie reklam przez **Pi-hole** oraz lokalne domeny (`.home`) działały
 
 3. Jako **Podstawowy serwer DNS (Primary DNS)** wpisz statyczny adres IP swojego Raspberry Pi (domyślnie `192.168.1.250`).
 
-4. Pole **Zapasowy serwer DNS (Secondary DNS)** pozostaw **puste** (jeśli wpiszesz tam np. `8.8.8.8` lub `1.1.1.1`, część zapytań ominie Pi-hole, reklamy będą się wyświetlać, a lokalne domeny `nas.home` nie będą działać).
+4. Pole **Zapasowy serwer DNS (Secondary DNS)** pozostaw **puste** (jeśli router wymaga wartości, wpisz ponownie `192.168.1.250`, `0.0.0.0` lub nieużywany adres IP z podsieci, np. `192.168.1.251` – nie wpisuj `1.1.1.1` ani `8.8.8.8`).
 
 5. Zapisz ustawienia i zrestartuj połączenie Wi-Fi/LAN na urządzeniach, aby pobrały nową konfigurację z routera.
 
@@ -214,27 +215,27 @@ Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedyto
 
 *(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
 
-### 🔐 Dokończenie konfiguracji Twingate (po uruchomieniu kontenerów)
+### 🔐 Dokończenie konfiguracji Tailscale (po uruchomieniu kontenerów)
 
-Gdy `setup_homelab.sh` uruchomi już kontener `twingate-connector`, dokończ konfigurację zdalnego dostępu w panelu **`admin.twingate.com`**:
+Gdy `setup_homelab.sh` uruchomi już kontener `tailscale`, wykonaj dwa kroki w panelu **`https://login.tailscale.com/admin`**:
 
-1. **Weryfikacja Connectora:**
+1. **Zatwierdzenie Subnet Route i wyłączenie wygasania klucza (*Machines*):**
 
-   * Sprawdź, czy status Connectora w panelu zmienił się na zielony (**Connected**). Lokalnie połączenie zweryfikujesz komendą `sudo docker logs twingate-connector`.
+   * Znajdź swoje Raspberry Pi na liście urządzeń, kliknij menu `...` → **Edit route settings** → zaznacz rozgłaszaną podsieć (np. `192.168.1.0/24`) i zapisz.
 
-2. **Resources (Zasoby dostępne zdalnie):**
+   * W tym samym menu kliknij **Disable key expiry**, aby serwer nie wymagał ponownej autoryzacji po 180 dniach.
 
-   * W ustawieniach swojej sieci kliknij **Add Resource** i dodaj (przypisując dostęp grupie **Everyone** lub własnej):
+2. **Przekierowanie całego DNS (LTE/5G) przez Pi-hole (*DNS*):**
 
-     * **Serwer RPi 5 / sieć LAN:** adres `192.168.1.250` (tylko Raspberry Pi) lub `192.168.1.0/24` (cała sieć domowa, np. panel routera).
+   * Przejdź do zakładki **DNS** → sekcja **Nameservers** → **Add nameserver → Custom**.
 
-     * **Lokalne domeny `.home`:** adres `*.home` – dzięki pracy w trybie `network_mode: host` Connector odpytuje lokalnego Pi-hole'a i rozwiązuje `nas.home`, `pihole.home`, `vault.home` oraz `git.home`.
+   * Wpisz adres **Tailscale IP** Twojego Raspberry Pi (`100.x.y.z` widoczny w zakładce *Machines*).
+
+   * Włącz przełącznik **Override DNS servers** – od tego momentu każde zapytanie DNS z telefonu na LTE/5G leci przez Pi-hole (działają zarówno listy HaGeZi, jak i lokalne domeny `https://*.home`), podczas gdy sam ruch internetowy idzie bezpośrednio przez sieć komórkową.
 
 3. **Klient na telefonie / laptopie:**
 
-   * Zainstaluj aplikację **Twingate**, zaloguj się do swojej sieci (`twojanazwa.twingate.com`), przełącz telefon na dane komórkowe i sprawdź dostęp np. do `https://nas.home` lub `https://pihole.home/admin` (albo po IP: `http://192.168.1.250:8081`).
-
-*(Wskazówka: Jeśli domeny `*.home` nie rozwiązują się zdalnie, sprawdź w `/etc/resolv.conf` na Raspberry Pi, czy jako serwer DNS wpisany jest `127.0.0.1` lub `192.168.1.250`).*
+   * Zainstaluj aplikację **Tailscale**, zaloguj się na to samo konto, przełącz telefon na dane komórkowe i sprawdź dostęp np. do `https://nas.home` lub `https://pihole.home/admin`.
 
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
 
@@ -264,7 +265,7 @@ Przy założeniu domyślnego adresu IP `192.168.1.250`, domyślnych domen `.home
 | **Gitea** | `https://git.home` | `http://192.168.1.250:3000` | SSH: port `2222`. Przy pierwszym wejściu kliknij *Zainstaluj Gitea* (dane PostgreSQL są już uzupełnione). | 
 | **Samba NAS (SMB)** | — | Linux: `smb://nas.home/DyskNAS` / Windows: `\\nas.home\DyskNAS` | Login i hasło Samby podane w konfiguratorze. | 
 | **Caddy (HTTPS)** | Porty `80` i `443` | — | Certyfikat CA do pobrania: `/srv/nas/pliki/homelab-root-ca.crt`. | 
-| **Twingate** | Działa w tle (`network_mode: host`) | — | Logi połączenia: `sudo docker logs twingate-connector`. | 
+| **Tailscale** | Działa w tle (`network_mode: host`) | — | Status połączenia: `sudo docker exec tailscale tailscale status`. | 
 | **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | — | Logi aktualizacji: `sudo docker logs watchtower`. | 
 
 ## 🗑️ Deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
@@ -340,7 +341,8 @@ docker logs vaultwarden
 docker logs gitea
 docker logs gitea-db
 docker logs caddy
-docker logs twingate-connector
+docker logs tailscale
+docker exec tailscale tailscale status
 ```
 
 * **Restart lub zatrzymanie usług:**
@@ -365,17 +367,17 @@ W warunkach domowych wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć st
 
 | Usługa w domu | Komercyjny odpowiednik | Zestaw na RPi 5 | Roczna oszczędność | 
 | ----- | ----- | ----- | ----- | 
-| **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
-| **Menedżer haseł** | Bitwarden Premium / 1Password (~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
-| **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (~80–200 PLN/rok) | **Pi-hole + Twingate** (darmowy do 5 osób) | **80 – 200 PLN** | 
-| **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
-| **RAZEM** | **~690 – 1 040 PLN / rok** | **~70 PLN / rok** | **~620 – 970 PLN / rok** | 
+| **Chmura na pliki i zdjęcia (2 TB)** | Google One / iCloud+ (\~47–50 PLN/mies.) | **Samba + FileBrowser** (0 PLN) | **560 – 600 PLN** | 
+| **Menedżer haseł** | Bitwarden Premium / 1Password (\~50–240 PLN/rok) | **Vaultwarden** (0 PLN) | **50 – 240 PLN** | 
+| **Ochrona DNS i zdalny dostęp** | NextDNS Pro / AdGuard / płatny VPN (\~80–200 PLN/rok) | **Pi-hole + Tailscale** (darmowy do 100 urządzeń) | **80 – 200 PLN** | 
+| **Energia elektryczna (24/7)** | 0 PLN (w chmurze) | **RPi 5** (\~6–7 W ≈ 60 kWh/rok) | **-70 PLN** *(koszt)* | 
+| **RAZEM** | **\~690 – 1 040 PLN / rok** | **\~70 PLN / rok** | **\~620 – 970 PLN / rok** | 
 
 **Szacowany czas zwrotu sprzętu** (przy koszcie zakupu brutto RPi 5, M.2 HAT+, dysku NVMe 1–2 TB, Active Coolera i zasilacza 27W na poziomie ok. **1 100 – 1 400 PLN**):
 
 * **HomeLab & NAS:** zwrot po **1,5 – 2 latach**.
 
-* **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **~430 PLN rocznie** na energii elektrycznej.
+* **Dodatkowa oszczędność na prądzie:** jeśli RPi 5 zastępuje w domu starszy serwer/PC x86 działający 24/7 (ok. 50 W ≈ 500 PLN/rok), sama zmiana platformy oszczędza dodatkowe **\~430 PLN rocznie** na energii elektrycznej.
 
 *(Wskazówka: Ponieważ zestaw pracuje na pojedynczym dysku NVMe, najważniejsze pliki z `/srv/nas/pliki` warto okresowo kopiować na zewnętrzny dysk USB zgodnie z zasadą backupu 3-2-1).*
 
