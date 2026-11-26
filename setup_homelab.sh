@@ -18,6 +18,13 @@ USER_GID=$(id -g "$ACTUAL_USER")
 DEFAULT_IP=$(hostname -I | awk '{print $1}')
 DEFAULT_IP=${DEFAULT_IP:-192.168.1.250}
 
+# Dedykowana podsieć Docker bridge (stałe IP ułatwiają routing DNS przez Tailscale)
+DOCKER_NET_NAME="homelab-net"
+DOCKER_SUBNET="172.28.0.0/24"
+PIHOLE_DOCKER_IP="172.28.0.10"
+CADDY_DOCKER_IP="172.28.0.20"
+TS_DOCKER_IP="172.28.0.30"
+
 # ================= 1. WSPÓLNE ŚCIEŻKI I SIEĆ =================
 echo -e "\n${YELLOW}[*] KROK 1: Konfiguracja sieci i katalogów głównych:${NC}"
 read -p "1. Adres IP Twojego Raspberry Pi [$DEFAULT_IP]: " RPI_IP
@@ -30,44 +37,48 @@ read -p "3. Katalog konfiguracji Dockera [/home/$ACTUAL_USER/docker/homelab]: " 
 DOCKER_DIR=${DOCKER_DIR:-/home/$ACTUAL_USER/docker/homelab}
 
 # ================= 2. WYBÓR KONTENERÓW (T/N) =================
-echo -e "\n${YELLOW}[*] KROK 2: Wybierz kontenery do zainstalowania (T/n):${NC}"
-read -p "   -> [1/7] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
+echo -e "\n${YELLOW}[*] KROK 2: Wybierz kontenery i zabezpieczenia (T/n):${NC}"
+read -p "   -> [1/6] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
 OPT_PIHOLE=${OPT_PIHOLE:-T}
 
-read -p "   -> [2/7] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
+read -p "   -> [2/6] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
 OPT_SAMBA=${OPT_SAMBA:-T}
 
-read -p "   -> [3/7] FileBrowser (Webowy menedżer plików NAS)? [T/n]: " OPT_FB
-OPT_FB=${OPT_FB:-T}
+read -p "   -> [3/6] Tailscale (VPN Subnet Router w trybie bridge + Pi-hole na LTE/5G)? [t/N]: " OPT_TS
+OPT_TS=${OPT_TS:-N}
 
-read -p "   -> [4/7] Twingate Connector (Zdalny dostęp Zero-Trust)? [t/N]: " OPT_TG
-OPT_TG=${OPT_TG:-N}
-
-read -p "   -> [5/7] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
+read -p "   -> [4/6] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
 OPT_VW=${OPT_VW:-N}
 
-read -p "   -> [6/7] Gitea + PostgreSQL (Lokalny serwer Git)? [t/N]: " OPT_GITEA
+read -p "   -> [5/6] Gitea + PostgreSQL (Lokalny serwer Git)? [t/N]: " OPT_GITEA
 OPT_GITEA=${OPT_GITEA:-N}
 
-read -p "   -> [7/7] Caddy Reverse Proxy (Lokalny HTTPS dla domen .home)? [T/n]: " OPT_CADDY
+read -p "   -> [6/6] Caddy Reverse Proxy (Lokalny HTTPS .home + zamknięcie portów webowych na LAN)? [T/n]: " OPT_CADDY
 OPT_CADDY=${OPT_CADDY:-T}
 
 read -p "   -> [Extra] Watchtower (Auto-update kontenerów o 04:00)? [T/n]: " OPT_WT
 OPT_WT=${OPT_WT:-T}
 
+read -p "   -> [Security] Docker userns-remap (Izolacja przestrzeni nazw UID/GID kontenerów)? [T/n]: " OPT_USERNS
+OPT_USERNS=${OPT_USERNS:-T}
+
 # ================= 3. SZCZEGÓŁOWE PYTANIA TYLKO DLA WYBRANYCH =================
 
 if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
     echo -e "\n${YELLOW}[*] Konfiguracja Pi-hole:${NC}"
-    read -p "   -> Port panelu WWW Pi-hole [8080]: " PIHOLE_PORT
-    PIHOLE_PORT=${PIHOLE_PORT:-8080}
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        read -p "   -> Port panelu WWW Pi-hole [8080]: " PIHOLE_PORT
+        PIHOLE_PORT=${PIHOLE_PORT:-8080}
+    else
+        echo -e "   ${CYAN}(Panel WWW będzie dostępny wyłącznie przez Caddy: https://pihole.home/admin — port LAN zamknięty)${NC}"
+    fi
     while true; do
         read -s -p "   -> Hasło do panelu WWW Pi-hole: " PIHOLE_PASS
         echo ""
         if [ -n "$PIHOLE_PASS" ]; then break; else echo -e "${RED}      Hasło nie może być puste!${NC}"; fi
     done
-    read -p "   -> Lokalne domeny DNS [nas.home pihole.home rpi.home vault.home git.home]: " LOCAL_DOMAINS
-    LOCAL_DOMAINS=${LOCAL_DOMAINS:-"nas.home pihole.home rpi.home vault.home git.home"}
+    read -p "   -> Lokalne domeny DNS [pihole.home rpi.home vault.home git.home]: " LOCAL_DOMAINS
+    LOCAL_DOMAINS=${LOCAL_DOMAINS:-"pihole.home rpi.home vault.home git.home"}
 fi
 
 if [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]; then
@@ -83,71 +94,96 @@ if [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]; then
     done
 fi
 
-if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-    echo -e "\n${YELLOW}[*] Konfiguracja FileBrowser:${NC}"
-    read -p "   -> Port dla FileBrowsera [8081]: " FB_PORT
-    FB_PORT=${FB_PORT:-8081}
-    read -p "   -> Login administratora FileBrowsera [admin]: " FB_USER
-    FB_USER=${FB_USER:-admin}
+if [[ "$OPT_TS" =~ ^[TtYy]$ ]]; then
+    echo -e "\n${YELLOW}[*] Konfiguracja Tailscale (VPN Subnet Router w sieci bridge):${NC}"
+    echo -e "   ${CYAN}(Auth Key wygenerujesz w https://login.tailscale.com/admin/settings/keys -> Generate auth key)${NC}"
     while true; do
-        read -s -p "   -> Hasło do FileBrowsera (min. 12 znaków) [Enter = użyj hasła Samby]: " FB_PASS
-        echo ""
-        FB_PASS=${FB_PASS:-$SAMBA_PASS}
-        if [ ${#FB_PASS} -ge 12 ]; then
-            break
-        else
-            echo -e "${RED}      [!] FileBrowser wymaga hasła o długości minimum 12 znaków! Podaj dłuższe hasło.${NC}"
-        fi
+        read -p "   -> Wklej TS_AUTHKEY (zaczyna się od tskey-auth-...): " TS_AUTHKEY
+        if [ -n "$TS_AUTHKEY" ]; then break; else echo -e "${RED}      Auth Key nie może być pusty!${NC}"; fi
     done
-fi
-
-if [[ "$OPT_TG" =~ ^[TtYy]$ ]]; then
-    echo -e "\n${YELLOW}[*] Konfiguracja Twingate Connector:${NC}"
-    echo -e "   ${CYAN}(Tokeny wygenerujesz w https://admin.twingate.com -> Remote Network -> Deploy Connector -> Docker)${NC}"
-    while true; do
-        read -p "   -> Nazwa sieci Twingate (np. 'twojanazwa' z twojanazwa.twingate.com): " TG_NET
-        if [ -n "$TG_NET" ]; then break; else echo -e "${RED}      Nazwa sieci nie może być pusta!${NC}"; fi
-    done
-    while true; do
-        read -p "   -> Wklej TWINGATE_ACCESS_TOKEN: " TG_ACCESS
-        if [ -n "$TG_ACCESS" ]; then break; else echo -e "${RED}      Access Token nie może być pusty!${NC}"; fi
-    done
-    while true; do
-        read -p "   -> Wklej TWINGATE_REFRESH_TOKEN: " TG_REFRESH
-        if [ -n "$TG_REFRESH" ]; then break; else echo -e "${RED}      Refresh Token nie może być pusty!${NC}"; fi
-    done
+    DEFAULT_ROUTES="${RPI_IP%.*}.0/24,${DOCKER_SUBNET}"
+    read -p "   -> Podsieci do rozgłaszania (LAN + Docker bridge) [$DEFAULT_ROUTES]: " TS_ROUTES
+    TS_ROUTES=${TS_ROUTES:-$DEFAULT_ROUTES}
 fi
 
 if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
     echo -e "\n${YELLOW}[*] Konfiguracja Vaultwarden (Bitwarden):${NC}"
-    read -p "   -> Port WWW dla Vaultwarden [8222]: " VW_PORT
-    VW_PORT=${VW_PORT:-8222}
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        read -p "   -> Port WWW dla Vaultwarden [8222]: " VW_PORT
+        VW_PORT=${VW_PORT:-8222}
+    else
+        echo -e "   ${CYAN}(Vaultwarden będzie dostępny wyłącznie przez Caddy: https://vault.home — port LAN zamknięty)${NC}"
+    fi
 fi
 
 if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
     echo -e "\n${YELLOW}[*] Konfiguracja Gitea (Serwer Git + PostgreSQL):${NC}"
-    read -p "   -> Port WWW dla Gitea [3000]: " GITEA_PORT
-    GITEA_PORT=${GITEA_PORT:-3000}
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        read -p "   -> Port WWW dla Gitea [3000]: " GITEA_PORT
+        GITEA_PORT=${GITEA_PORT:-3000}
+    else
+        echo -e "   ${CYAN}(Panel WWW Gitei będzie dostępny wyłącznie przez Caddy: https://git.home — port LAN zamknięty)${NC}"
+    fi
     read -p "   -> Port SSH dla Gitea [2222]: " GITEA_SSH_PORT
     GITEA_SSH_PORT=${GITEA_SSH_PORT:-2222}
 fi
 
 echo -e "\n${CYAN}======================================================${NC}"
 
-# ================= 4. PRZYGOTOWANIE KATALOGÓW =================
-echo -e "${YELLOW}[1/4] Tworzenie struktury katalogów w $NAS_DIR oraz $DOCKER_DIR...${NC}"
+# ================= 4. PRZYGOTOWANIE KATALOGÓW I USERNS-REMAP =================
+echo -e "${YELLOW}[1/3] Przygotowanie katalogów oraz konfiguracji Dockera...${NC}"
 sudo mkdir -p "$NAS_DIR"
 sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$(dirname "$NAS_DIR")"
 sudo chmod -R 775 "$NAS_DIR"
 
 mkdir -p "$DOCKER_DIR"
 
+REMAP_UID=""
+REMAP_GID=""
+USERNS_HOST_LINE=""
+
+if [[ "$OPT_USERNS" =~ ^[TtYy]$ ]]; then
+    echo -e "${YELLOW}   -> Konfiguracja Docker userns-remap (izolacja UID/GID)...${NC}"
+    if [ -f "$DOCKER_DIR/docker-compose.yml" ]; then
+        (cd "$DOCKER_DIR" && sudo docker compose down >/dev/null 2>&1 || true)
+    fi
+
+    sudo mkdir -p /etc/docker
+    [ -f /etc/docker/daemon.json ] && sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak
+
+    sudo python3 - <<'PYEOF'
+import json
+path = "/etc/docker/daemon.json"
+try:
+    with open(path, "r") as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data["userns-remap"] = "default"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+
+    sudo systemctl restart docker
+    sleep 2
+
+    REMAP_UID=$(awk -F: '$1=="dockremap"{print $2; exit}' /etc/subuid)
+    REMAP_GID=$(awk -F: '$1=="dockremap"{print $2; exit}' /etc/subgid)
+    if [ -z "$REMAP_UID" ] || [ -z "$REMAP_GID" ]; then
+        echo -e "${RED}[!] Nie znaleziono zakresu 'dockremap' w /etc/subuid. Sprawdź logi: sudo journalctl -u docker -n 30${NC}"
+        exit 1
+    fi
+    USERNS_HOST_LINE='    userns_mode: "host"'
+    echo -e "${GREEN}   [+] Aktywowano userns-remap (dockremap base UID:GID = ${REMAP_UID}:${REMAP_GID}).${NC}"
+fi
+
 cat > "$DOCKER_DIR/docker-compose.yml" <<EOF
 services:
 EOF
 
 # ================= 5. GENEROWANIE USŁUG W DOCKER-COMPOSE =================
-echo -e "${YELLOW}[2/4] Generowanie pliku docker-compose.yml dla wybranych usług...${NC}"
+echo -e "${YELLOW}[2/3] Generowanie pliku docker-compose.yml dla wybranych usług...${NC}"
 
 # --- PI-HOLE ---
 if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
@@ -164,13 +200,13 @@ if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
         fi
     fi
 
-    mkdir -p "$DOCKER_DIR/pihole/etc-pihole" "$DOCKER_DIR/pihole/etc-dnsmasq.d"
-    rm -f "$DOCKER_DIR/pihole/etc-pihole/custom.list"
+    sudo mkdir -p "$DOCKER_DIR/pihole/etc-pihole" "$DOCKER_DIR/pihole/etc-dnsmasq.d"
+    sudo rm -f "$DOCKER_DIR/pihole/etc-pihole/custom.list"
     EXTRA_HOSTS_YAML=""
     FTL_HOSTS_LIST=""
 
     for dom in $LOCAL_DOMAINS; do
-        echo "${RPI_IP} ${dom}" >> "$DOCKER_DIR/pihole/etc-pihole/custom.list"
+        echo "${RPI_IP} ${dom}" | sudo tee -a "$DOCKER_DIR/pihole/etc-pihole/custom.list" >/dev/null
         EXTRA_HOSTS_YAML="${EXTRA_HOSTS_YAML}      - \"${dom}:${RPI_IP}\"\n"
         if [ -z "$FTL_HOSTS_LIST" ]; then
             FTL_HOSTS_LIST="${RPI_IP} ${dom}"
@@ -178,6 +214,10 @@ if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
             FTL_HOSTS_LIST="${FTL_HOSTS_LIST};${RPI_IP} ${dom}"
         fi
     done
+
+    if [[ "$OPT_USERNS" =~ ^[TtYy]$ ]]; then
+        sudo chown -R "${REMAP_UID}:${REMAP_GID}" "$DOCKER_DIR/pihole"
+    fi
 
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
@@ -187,7 +227,13 @@ if [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]; then
     ports:
       - "53:53/tcp"
       - "53:53/udp"
+EOF
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
       - "${PIHOLE_PORT}:80/tcp"
+EOF
+    fi
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     environment:
       TZ: 'Europe/Warsaw'
       WEBPASSWORD: '${PIHOLE_PASS}'
@@ -202,8 +248,15 @@ $(echo -ne "$EXTRA_HOSTS_YAML")
       - './pihole/etc-dnsmasq.d:/etc/dnsmasq.d'
     cap_add:
       - NET_ADMIN
+    networks:
+      ${DOCKER_NET_NAME}:
+        ipv4_address: ${PIHOLE_DOCKER_IP}
     restart: unless-stopped
 EOF
+
+    # Automatyczna aktualizacja list Gravity codziennie o 03:30 (przed Watchtowerem o 04:00)
+    echo "30 3 * * * root docker exec pihole pihole -g >/dev/null 2>&1" | sudo tee /etc/cron.d/pihole-gravity >/dev/null
+    sudo chmod 644 /etc/cron.d/pihole-gravity
 fi
 
 # --- SAMBA ---
@@ -213,6 +266,9 @@ if [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]; then
   samba:
     container_name: samba-nas
     image: dperson/samba:latest
+EOF
+    [ -n "$USERNS_HOST_LINE" ] && echo "$USERNS_HOST_LINE" >> "$DOCKER_DIR/docker-compose.yml"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     ports:
       - "139:139/tcp"
       - "445:445/tcp"
@@ -223,59 +279,66 @@ if [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]; then
     volumes:
       - '${NAS_DIR}:/mount:z'
     command: '-u "${SAMBA_USER};${SAMBA_PASS}" -s "${SHARE_NAME};/mount;yes;no;no;${SAMBA_USER}" -p'
+    networks:
+      - ${DOCKER_NET_NAME}
     restart: unless-stopped
 EOF
 fi
 
-# --- FILEBROWSER ---
-if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-    mkdir -p "$DOCKER_DIR/filebrowser"
-    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/filebrowser"
+# --- TAILSCALE (TRYB BRIDGE NA DEDYKOWANEJ SIECI DOCKER) ---
+if [[ "$OPT_TS" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/tailscale/state"
+    # IP forwarding na hoście dla ruchu do sieci LAN przez bridge
+    if [ -d /proc/sys/net/ipv6 ]; then
+        printf "net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n" | sudo tee /etc/sysctl.d/99-tailscale.conf >/dev/null
+    else
+        printf "net.ipv4.ip_forward = 1\n" | sudo tee /etc/sysctl.d/99-tailscale.conf >/dev/null
+    fi
+    sudo sysctl -p /etc/sysctl.d/99-tailscale.conf >/dev/null 2>&1 || true
+
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
-  filebrowser:
-    container_name: filebrowser-nas
-    image: filebrowser/filebrowser:latest
-    user: "${USER_UID}:${USER_GID}"
-    ports:
-      - "${FB_PORT}:80"
-    volumes:
-      - '${NAS_DIR}:/srv'
-      - './filebrowser:/database'
-    command: --database /database/filebrowser.db
-    restart: unless-stopped
+  tailscale:
+    container_name: tailscale
+    image: tailscale/tailscale:latest
+    hostname: $(hostname)
 EOF
-fi
-
-# --- TWINGATE ---
-if [[ "$OPT_TG" =~ ^[TtYy]$ ]]; then
-    # W trybie network_mode: host sysctl dla ICMP ping ustawia się na hoście, nie w kontenerze
-    echo "net.ipv4.ping_group_range = 0 2147483647" | sudo tee /etc/sysctl.d/99-twingate.conf >/dev/null
-    sudo sysctl -w net.ipv4.ping_group_range="0 2147483647" >/dev/null 2>&1 || true
-
+    [ -n "$USERNS_HOST_LINE" ] && echo "$USERNS_HOST_LINE" >> "$DOCKER_DIR/docker-compose.yml"
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
-
-  twingate:
-    container_name: twingate-connector
-    image: twingate/connector:latest
-    network_mode: host
     environment:
       - TZ=Europe/Warsaw
-      - TWINGATE_NETWORK=${TG_NET}
-      - TWINGATE_ACCESS_TOKEN=${TG_ACCESS}
-      - TWINGATE_REFRESH_TOKEN=${TG_REFRESH}
-      - TWINGATE_DNS=${RPI_IP}
-      - TWINGATE_LABEL_HOSTNAME=$(hostname)
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_ROUTES=${TS_ROUTES}
+      - TS_EXTRA_ARGS=--accept-dns=false
+    volumes:
+      - './tailscale/state:/var/lib/tailscale'
+      - '/dev/net/tun:/dev/net/tun'
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+EOF
+    if [ -d /proc/sys/net/ipv6 ]; then
+        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+      - net.ipv6.conf.all.forwarding=1
+EOF
+    fi
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+    networks:
+      ${DOCKER_NET_NAME}:
+        ipv4_address: ${TS_DOCKER_IP}
     restart: unless-stopped
 EOF
 fi
 
 # --- VAULTWARDEN ---
 if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
-    mkdir -p "$DOCKER_DIR/vaultwarden"
-    VW_DOMAIN_ENV=""
-    if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
-        VW_DOMAIN_ENV="      - DOMAIN=https://vault.home"
+    sudo mkdir -p "$DOCKER_DIR/vaultwarden"
+    if [[ "$OPT_USERNS" =~ ^[TtYy]$ ]]; then
+        sudo chown -R "${REMAP_UID}:${REMAP_GID}" "$DOCKER_DIR/vaultwarden"
     fi
 
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
@@ -283,23 +346,37 @@ if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
   vaultwarden:
     container_name: vaultwarden
     image: vaultwarden/server:latest
+EOF
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     ports:
       - "${VW_PORT}:80"
+EOF
+    fi
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     environment:
       - TZ=Europe/Warsaw
       - SIGNUPS_ALLOWED=true
       - WEBSOCKET_ENABLED=true
-${VW_DOMAIN_ENV}
+EOF
+    if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+      - DOMAIN=https://vault.home
+EOF
+    fi
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     volumes:
       - './vaultwarden:/data'
+    networks:
+      - ${DOCKER_NET_NAME}
     restart: unless-stopped
 EOF
 fi
 
 # --- GITEA + POSTGRESQL ---
 if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
-    mkdir -p "$DOCKER_DIR/gitea/data" "$DOCKER_DIR/gitea/postgres"
-    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/gitea/data"
+    mkdir -p "$DOCKER_DIR/gitea"
+    sudo mkdir -p "$DOCKER_DIR/gitea/data" "$DOCKER_DIR/gitea/postgres"
 
     GITEA_PASS_FILE="$DOCKER_DIR/gitea/.db_pass"
     if [ -f "$GITEA_PASS_FILE" ]; then
@@ -312,6 +389,12 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
         fi
         echo "$GITEA_DB_PASS" > "$GITEA_PASS_FILE"
         chmod 600 "$GITEA_PASS_FILE"
+    fi
+
+    if [[ "$OPT_USERNS" =~ ^[TtYy]$ ]]; then
+        sudo chown -R "${REMAP_UID}:${REMAP_GID}" "$DOCKER_DIR/gitea/data" "$DOCKER_DIR/gitea/postgres"
+    else
+        sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/gitea/data"
     fi
 
     if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
@@ -339,6 +422,8 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - ${DOCKER_NET_NAME}
     restart: unless-stopped
 
   gitea:
@@ -349,8 +434,8 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
         condition: service_healthy
     environment:
       - TZ=Europe/Warsaw
-      - USER_UID=${USER_UID}
-      - USER_GID=${USER_GID}
+      - USER_UID=1000
+      - USER_GID=1000
       - GITEA__database__DB_TYPE=postgres
       - GITEA__database__HOST=gitea-db:5432
       - GITEA__database__NAME=gitea
@@ -361,19 +446,28 @@ if [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]; then
       - GITEA__server__ROOT_URL=${GITEA_ROOT_URL}
       - GITEA__server__SSH_PORT=${GITEA_SSH_PORT}
     ports:
+EOF
+    if [[ ! "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
+        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
       - "${GITEA_PORT}:3000"
+EOF
+    fi
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
       - "${GITEA_SSH_PORT}:22"
     volumes:
       - './gitea/data:/data'
       - '/etc/timezone:/etc/timezone:ro'
       - '/etc/localtime:/etc/localtime:ro'
+    networks:
+      - ${DOCKER_NET_NAME}
     restart: unless-stopped
 EOF
 fi
 
 # --- CADDY (LOKALNY HTTPS DLA DOMEN .home) ---
 if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
-    mkdir -p "$DOCKER_DIR/caddy/data" "$DOCKER_DIR/caddy/config"
+    mkdir -p "$DOCKER_DIR/caddy"
+    sudo mkdir -p "$DOCKER_DIR/caddy/data" "$DOCKER_DIR/caddy/config"
     CADDYFILE="$DOCKER_DIR/caddy/Caddyfile"
     : > "$CADDYFILE"
 
@@ -382,16 +476,6 @@ if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
 pihole.home {
     tls internal
     reverse_proxy pihole:80
-}
-
-EOF
-    fi
-
-    if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-        cat >> "$CADDYFILE" <<'EOF'
-nas.home {
-    tls internal
-    reverse_proxy filebrowser:80
 }
 
 EOF
@@ -417,6 +501,11 @@ git.home {
 EOF
     fi
 
+    chmod 644 "$CADDYFILE"
+    if [[ "$OPT_USERNS" =~ ^[TtYy]$ ]]; then
+        sudo chown -R "${REMAP_UID}:${REMAP_GID}" "$DOCKER_DIR/caddy/data" "$DOCKER_DIR/caddy/config"
+    fi
+
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 
   caddy:
@@ -429,6 +518,9 @@ EOF
       - './caddy/Caddyfile:/etc/caddy/Caddyfile:ro'
       - './caddy/data:/data'
       - './caddy/config:/config'
+    networks:
+      ${DOCKER_NET_NAME}:
+        ipv4_address: ${CADDY_DOCKER_IP}
     restart: unless-stopped
 EOF
 fi
@@ -440,6 +532,9 @@ if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
   watchtower:
     container_name: watchtower
     image: containrrr/watchtower:latest
+EOF
+    [ -n "$USERNS_HOST_LINE" ] && echo "$USERNS_HOST_LINE" >> "$DOCKER_DIR/docker-compose.yml"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     environment:
       - TZ=Europe/Warsaw
       - DOCKER_API_VERSION=1.44
@@ -448,31 +543,31 @@ if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
       - WATCHTOWER_SCHEDULE=0 0 4 * * *
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ${DOCKER_NET_NAME}
     restart: unless-stopped
 EOF
 fi
 
+# --- DEDYKOWANA SIEĆ BRIDGE ---
+cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+networks:
+  ${DOCKER_NET_NAME}:
+    name: ${DOCKER_NET_NAME}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET}
+EOF
+
 chmod 600 "$DOCKER_DIR/docker-compose.yml"
 echo -e "${GREEN}[+] Plik $DOCKER_DIR/docker-compose.yml został wygenerowany.${NC}"
 
-# ================= 6. INICJALIZACJA BAZY FILEBROWSERA =================
+# ================= 6. URUCHOMIENIE KONTENERÓW =================
 cd "$DOCKER_DIR"
-
-if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-    echo -e "${YELLOW}[3/4] Konfiguracja konta '$FB_USER' w bazie FileBrowsera...${NC}"
-    sudo docker compose stop filebrowser >/dev/null 2>&1 || true
-    sudo rm -f "$DOCKER_DIR/filebrowser/filebrowser.db"
-    sudo docker compose run --rm filebrowser config init --database /database/filebrowser.db >/dev/null
-    sudo docker compose run --rm filebrowser config set --address 0.0.0.0 --root /srv --database /database/filebrowser.db >/dev/null
-    sudo docker compose run --rm filebrowser users add "$FB_USER" "$FB_PASS" --perm.admin --database /database/filebrowser.db >/dev/null
-    echo -e "${GREEN}[+] Utworzono konto '$FB_USER' w FileBrowserze.${NC}"
-else
-    echo -e "${YELLOW}[3/4] Pominięto inicjalizację FileBrowsera.${NC}"
-fi
-
-# ================= 7. URUCHOMIENIE KONTENERÓW =================
-echo -e "${YELLOW}[4/4] Uruchamianie wybranych kontenerów w tle...${NC}"
-sudo docker compose up -d
+echo -e "${YELLOW}[3/3] Uruchamianie wybranych kontenerów w tle...${NC}"
+sudo docker compose up -d --remove-orphans
 
 # Eksport certyfikatu Root CA z Caddy (do jednorazowego wgrania na telefon/laptop)
 CA_EXPORTED=""
@@ -499,20 +594,26 @@ echo -e "\n${CYAN}======================================================${NC}"
 echo -e "${GREEN}[SUKCES] Wybrane usługi działają w tle!${NC}"
 echo -e "Katalog danych NAS:  ${YELLOW}${NAS_DIR}${NC}"
 echo -e "Plik Compose:        ${YELLOW}${DOCKER_DIR}/docker-compose.yml${NC}"
+echo -e "Sieć Docker bridge:  ${YELLOW}${DOCKER_NET_NAME} (${DOCKER_SUBNET})${NC}"
+[[ "$OPT_USERNS" =~ ^[TtYy]$ ]] && echo -e "Izolacja Docker:     ${GREEN}userns-remap AKTYWNY (dockremap base: ${REMAP_UID}:${REMAP_GID})${NC}"
 echo -e "------------------------------------------------------"
 if [[ "$OPT_CADDY" =~ ^[TtYy]$ ]]; then
-    [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      https://pihole.home/admin  (lub http://${RPI_IP}:${PIHOLE_PORT}/admin)"
-    [[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  https://nas.home           (lub http://${RPI_IP}:${FB_PORT})"
-    [[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  https://vault.home         (lub http://${RPI_IP}:${VW_PORT})"
+    [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      https://pihole.home/admin  (bezpośredni port LAN zamknięty)"
+    [[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  https://vault.home         (bezpośredni port LAN zamknięty)"
     [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]  && echo -e "Gitea:        https://git.home           (SSH: port ${GITEA_SSH_PORT})"
     echo -e "Certyfikat:   ${YELLOW}${DOCKER_DIR}/caddy/homelab-root-ca.crt${NC} (skopiowany też do ${NAS_DIR})"
 else
     [[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      http://${RPI_IP}:${PIHOLE_PORT}/admin"
-    [[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  http://${RPI_IP}:${FB_PORT}"
     [[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  http://${RPI_IP}:${VW_PORT}"
     [[ "$OPT_GITEA" =~ ^[TtYy]$ ]]  && echo -e "Gitea:        http://${RPI_IP}:${GITEA_PORT} (SSH: port ${GITEA_SSH_PORT})"
 fi
+[[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole Cron: Auto-aktualizacja Gravity codziennie o 03:30 (/etc/cron.d/pihole-gravity)"
 [[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]  && echo -e "Samba SMB:    smb://${RPI_IP}/${SHARE_NAME} (Windows: \\\\${RPI_IP}\\${SHARE_NAME})"
-[[ "$OPT_TG" =~ ^[TtYy]$ ]]     && echo -e "Twingate:     Aktywny w trybie hosta (logi: sudo docker logs twingate-connector)"
+if [[ "$OPT_TS" =~ ^[TtYy]$ ]]; then
+    echo -e "Tailscale:    Aktywny na sieci bridge (status: sudo docker exec tailscale tailscale status)"
+    echo -e "              ${YELLOW}Panel: https://login.tailscale.com/admin${NC}"
+    echo -e "              1) Machines -> zatwierdź Subnet Routes (${TS_ROUTES}) i wyłącz Key Expiry"
+    echo -e "              2) DNS -> Global nameservers -> wpisz ${PIHOLE_DOCKER_IP} (Pi-hole bridge IP) + Override DNS servers"
+fi
 [[ "$OPT_WT" =~ ^[TtYy]$ ]]     && echo -e "Watchtower:   Aktywny (Auto-update codziennie o 04:00)"
 echo -e "${CYAN}======================================================${NC}"
