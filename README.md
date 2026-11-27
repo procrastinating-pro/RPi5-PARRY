@@ -102,7 +102,7 @@ Zamiast pojedynczego dysku NVMe na **Raspberry Pi M.2 HAT+** można podłączyć
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole** (+ nocny Cron Gravity), **Samba (SMB)**, **Tailscale (VPN Subnet Router w sieci `bridge` + `TS_USERSPACE=true`)**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS `.home` + zamknięcie portów webowych na LAN)**, **Watchtower** (auto-update o 04:00) oraz **Docker `userns-remap`**. | 
 | **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker Pi-hole: dodaje gotowe pakiety **HaGeZi** (Multi PRO / PRO++ / Ultimate + TIF w formacie RPZ) chroniące przed reklamami, telemetrią, **malware** oraz **phishingiem**, a także klasyczny zestaw lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
-| **`setup_backup.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator backupu 3-2-1 (`03:00` w Cronie) z dwoma trybami: **\[1\]** automatyczne formatowanie dysku USB (`GPT` + `ext4` z własną etykietą + wpis `UUID`/`nofail` w `/etc/fstab`), lustrzana kopia NAS (`rsync` z archiwum usuniętych plików, jak ulepszony **RAID 1**) oraz szyfrowane (**AES-256-CBC**) migawki baz; **\[2\]** interaktywny **Kreator Przywracania (Restore Wizard)** wymagający tylko wyboru migawki/usługi i podania hasła. | 
+| **`setup_backup.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator backupu 3-2-1 (`03:00` w Cronie) z dwoma trybami: **\[1\]** automatyczne formatowanie dysku USB (`GPT` + `ext4` z własną etykietą + wpis `UUID`/`nofail` w `/etc/fstab`), lustrzana kopia NAS (`rsync` z archiwum usuniętych plików, jak ulepszony **RAID 1**) oraz szyfrowane (**AES-256-CBC**) migawki baz; **\[2\]** interaktywny **Kreator Przywracania (Restore Wizard)** wymagający podania hasła dla baz usług (`[1]`–`[5]`) oraz bezhasłowego odtwarzania lustra NAS (`[6]`). | 
 | **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: wylogowuje węzeł Tailscale (`tailscale logout`), usuwa kontenery HomeLab & NAS, sieć `homelab-net`, zadania Cron/sysctl i katalog `~/docker/homelab`, opcjonalnie wycofuje `userns-remap`, przywraca `systemd-resolved` oraz chroni dane na dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
@@ -335,14 +335,16 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 ## 💾 Krok 5: Nocny Backup 3-2-1, format dysku USB i Restore (`setup_backup.sh`)
 
-Ponieważ pojedynczy dysk NVMe chroni poufność danych, ale nie chroni przed awarią samego nośnika lub przypadkowym skasowaniem plików, podepnij zewnętrzny dysk SSD/HDD do portu **USB 3.0** i uruchom interaktywny konfigurator:
+Ponieważ pojedynczy dysk NVMe chroni poufność danych, ale nie chroni przed awarią samego nośnika lub przypadkowym skasowaniem plików, podepnij zewnętrzny dysk SSD/HDD do portu **USB 3.0**, pobierz skrypt i uruchom interaktywny konfigurator:
 
 ```
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_backup.sh)
+curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_backup.sh -o setup_backup.sh
+chmod +x setup_backup.sh
+sudo ./setup_backup.sh
 
 ```
 
-*(Jeśli na systemie nie ma jeszcze pakietu `parted` do tworzenia partycji na czystym dysku USB, zainstalujesz go przez `sudo apt update && sudo apt install -y parted`).*
+*(Skrypt wymaga pobrania do pliku, ponieważ uruchamiany jest z `sudo` oraz instaluje swoją kopię w `/usr/local/sbin/homelab-backup.sh`. Po zakończeniu konfiguracji lokalny plik `setup_backup.sh` możesz usunąć. Jeśli na systemie brakuje narzędzia `parted` do tworzenia partycji na czystym dysku USB, zainstalujesz je przez `sudo apt update && sudo apt install -y parted`).*
 
 **Dwa tryby działania skryptu:**
 
@@ -350,15 +352,17 @@ sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi
 
    * **Automatyczne formatowanie i montowanie dysku USB:** jeśli katalog `/mnt/backup_usb` nie jest jeszcze zamontowany, kreator wyświetla podłączone dyski, blokuje możliwość przypadkowego wybrania dysku systemowego (`nvme*` / `mmcblk*`), formatuje wskazany dysk USB (`GPT` + `ext4`) pod wybraną przez Ciebie etykietą (np. `BACKUP_USB`), pobiera `UUID` i sam dopisuje bezpieczny wpis z opcją **`nofail`** do `/etc/fstab`.
 
-   * **Lustrzana kopia NAS (ulepszony RAID 1):** utrzymuje kopię 1:1 katalogu `/srv/nas/pliki` w `/mnt/backup_usb/homelab-backup/nas-mirror`, ale zamiast natychmiast kasować usunięte lub nadpisane pliki, przenosi je do katalogu historii (`nas-deleted-history/<data>/`) na zadaną liczbę dni (domyślnie 14).
+   * **Lustrzana kopia NAS (ulepszony RAID 1 — bez szyfrowania):** utrzymuje kopię 1:1 katalogu `/srv/nas/pliki` w `/mnt/backup_usb/homelab-backup/nas-mirror` na zwykłej partycji `ext4` (co zapewnia maksymalną szybkość przyrostowego `rsync`), ale zamiast natychmiast kasować usunięte lub nadpisane pliki, przenosi je do katalogu historii (`nas-deleted-history/<data>/`) na zadaną liczbę dni (domyślnie 14).
 
-   * **Spójne migawki baz i konfiguracji (AES-256-CBC):** wykonuje bezpieczny online-backup bazy SQLite Vaultwardena (`.backup`), pełny zrzut `pg_dump` bazy PostgreSQL Gitei wraz z repozytoriami, ustawienia Pi-hole, Caddy oraz `docker-compose.yml`, a następnie pakuje je i szyfruje kluczem z `/etc/homelab-backup.key` (`chmod 600`).
+   * **Spójne migawki baz i konfiguracji (szyfrowane AES-256-CBC):** wykonuje bezpieczny online-backup bazy SQLite Vaultwardena (`.backup`), pełny zrzut `pg_dump` bazy PostgreSQL Gitei wraz z repozytoriami, ustawienia Pi-hole, Caddy oraz `docker-compose.yml`, a następnie pakuje je i szyfruje kluczem z `/etc/homelab-backup.key` (`chmod 600`).
 
    * **Bezpiecznik `mountpoint`:** jeśli dysk zewnętrzny zostanie odłączony, skrypt przerywa działanie i zapisuje ostrzeżenie w `/var/log/homelab-backup.log`, chroniąc dysk systemowy NVMe przed zapełnieniem.
 
 2. **Tryb `[2]` — Kreator Przywracania (Restore Wizard):**
 
-   * Po uruchomieniu `sudo /usr/local/sbin/homelab-backup.sh` i wybraniu opcji **`[2]`** wyświetla listę wszystkich migawek od najnowszej, pozwala przywrócić **wszystko naraz** lub **pojedynczą usługę** (Vaultwarden, Gitea + PostgreSQL, Pi-hole/Caddy lub pliki NAS) i pyta **wyłącznie o hasło AES-256** (automatycznie zachowując uprawnienia `dockremap` przy aktywnym `userns-remap`).
+   * Po uruchomieniu `sudo /usr/local/sbin/homelab-backup.sh` i wybraniu opcji **`[2]`** wyświetla listę wszystkich migawek od najnowszej i pozwala przywrócić **wszystko naraz** lub **pojedynczą usługę** (automatycznie zachowując uprawnienia `dockremap` przy aktywnym `userns-remap`).
+
+   * **Zasada podawania hasła:** przy wyborze opcji **`[1]`–`[5]`** (Vaultwarden, Gitea + PostgreSQL, Pi-hole/Caddy) kreator zawsze wymaga podania hasła szyfrowania **AES-256**. Przy wyborze opcji **`[6]` (Tylko pliki NAS z lustra)** hasło nie jest wymagane, ponieważ katalog `nas-mirror` jest przechowywany jako nieszyfrowana kopia 1:1 na `ext4`.
 
 *Ręczny test kopii zapasowej oraz uruchomienie kreatora przywracania:*
 
@@ -416,7 +420,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
   Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
 
   ```
-  sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh)
+  curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh -o diagnose_and_fix_fan.sh
+  sudo bash diagnose_and_fix_fan.sh
   
   ```
 
