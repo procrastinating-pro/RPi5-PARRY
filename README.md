@@ -57,7 +57,7 @@ Wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subsk
 
 * \[x\] **Automatyczna aktualizacja list Pi-hole Gravity w nocy** – zadanie Cron (`/etc/cron.d/pihole-gravity` codziennie o `03:30`) odświeżające bazy blokowania (`docker exec pihole pihole -g`) przed nocnym oknem aktualizacji Watchtowera (`04:00`).
 
-* \[ \] **Zaktualizować `uninstall_homelab.sh`** o czyszczenie katalogu `~/docker/homelab/tailscale`, pliku `/etc/sysctl.d/99-tailscale.conf`, `/etc/cron.d/pihole-gravity` oraz opcjonalne wycofanie `userns-remap`.
+* \[x\] **Zaktualizować `uninstall_homelab.sh`** o czyszczenie katalogu `~/docker/homelab/tailscale`, pliku `/etc/sysctl.d/99-tailscale.conf`, `/etc/cron.d/pihole-gravity` oraz opcjonalne wycofanie `userns-remap`.
 
 * \[ \] **Automatyczny backup konfiguracji** (bazy Vaultwarden, repozytoriów Gitea oraz ustawień Pi-hole) na zewnętrzny nośnik lub zaszyfrowane archiwum.
 
