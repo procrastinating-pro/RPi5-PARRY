@@ -285,7 +285,7 @@ EOF
 EOF
 fi
 
-# --- TAILSCALE (TRYB BRIDGE NA DEDYKOWANEJ SIECI DOCKER) ---
+# --- TAILSCALE (TRYB BRIDGE + USERSPACE DLA JĄDER RPi OS Z NFTABLES) ---
 if [[ "$OPT_TS" =~ ^[TtYy]$ ]]; then
     mkdir -p "$DOCKER_DIR/tailscale/state"
     # IP forwarding na hoście dla ruchu do sieci LAN przez bridge
@@ -309,24 +309,13 @@ EOF
       - TZ=Europe/Warsaw
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_USERSPACE=false
+      - TS_USERSPACE=true
       - TS_ROUTES=${TS_ROUTES}
       - TS_EXTRA_ARGS=--accept-dns=false
     volumes:
       - './tailscale/state:/var/lib/tailscale'
-      - '/dev/net/tun:/dev/net/tun'
     cap_add:
       - NET_ADMIN
-      - SYS_MODULE
-    sysctls:
-      - net.ipv4.ip_forward=1
-EOF
-    if [ -d /proc/sys/net/ipv6 ]; then
-        cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
-      - net.ipv6.conf.all.forwarding=1
-EOF
-    fi
-    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     networks:
       ${DOCKER_NET_NAME}:
         ipv4_address: ${TS_DOCKER_IP}
