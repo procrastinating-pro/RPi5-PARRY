@@ -1,6 +1,6 @@
 # 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **Tailscale**, **Vaultwarden**, **Gitea**, **Caddy HTTPS**, **Watchtower**).
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera**, modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **Tailscale**, **Vaultwarden**, **Gitea**, **Caddy HTTPS**, **Watchtower**) oraz **nocny, szyfrowany backup 3-2-1 z kreatorem przywracania**.
 
 ## 🛡️ O ile spada ryzyko udanego ataku?
 
@@ -8,11 +8,12 @@ Względem standardowej sieci domowej (router z przekierowanymi portami i zwykły
 
 | Wektor ataku | Spadek ryzyka | Co dokładnie blokuje ten wektor? | 
 | ----- | ----- | ----- | 
-| **Botnety i skanery z internetu (WAN → LAN)** | **\~99,9%** | **Tailscale (0 otwartych portów na routerze)** – serwer jest niewidoczny dla skanerów (Shodan) i automatycznych botnetów. | 
+| **Botnety i skanery z internetu (WAN → LAN)** | **\~99,9%** | **Tailscale (0 otwartych portów na routerze)** – serwer jest niewidocznym dla skanerów (Shodan) i automatycznych botnetów. | 
 | **Malware, phishing i serwery C2** | **\~70 – 95%** | **Pi-hole (HaGeZi + TIF) + Tailscale DNS** – blokuje złośliwe domeny na poziomie DNS w domowym Wi-Fi oraz na sieci komórkowej **LTE/5G**. | 
 | **Fałszywe Wi-Fi / Evil Portal** | **\~99%** | **Vaultwarden + własne LTE/5G** – menedżer haseł sprawdza dokładną domenę i nie autouzupełni hasła na podstawionym linku, a nielimitowane LTE eliminuje potrzebę łączenia z publicznym Wi-Fi. | 
 | **Podsłuch haseł w sieci lokalnej (MITM)** | **\~95 – 99%** | **Caddy Reverse Proxy (`tls internal`)** – szyfruje dostęp do paneli (`*.home`) i zamyka bezpośrednie porty HTTP w sieci LAN. | 
 | **Znane luki w aplikacjach (CVE)** | **\~80 – 90%** | **Watchtower (04:00) + Auto-Update (03:30)** – skraca okno podatności z tygodni/miesięcy do maks. 24 godzin. | 
+| **Ransomware / przypadkowe skasowanie plików** | **Wysoka ochrona** | **Nocny backup 3-2-1 (`setup_backup.sh`)** – lustrzana kopia NAS z historią usuniętych/nadpisanych plików oraz zaszyfrowane (AES-256) migawki baz danych. | 
 | **Eskalacja uprawnień z kontenera** | **Wysoka izolacja** | **Docker `userns-remap` + sieć `bridge`** – kontenery nie działają jako prawdziwy `root` na hoście i nie współdzielą jego stosu sieciowego. | 
 
 ## 💰 Szacowane oszczędności i zwrot z inwestycji (ROI)
@@ -41,8 +42,6 @@ Wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subsk
 
 * **W mikrofirmie (3–10 stanowisk):** pojedynczy skuteczny phishing kończący się ransomware na udziałach sieciowych to zazwyczaj **15 000 – 50 000+ PLN strat** (przestój operacyjny firmy, informatyk śledczy, odtwarzanie danych z kopii zapasowych oraz ryzyko kar RODO). Koszt sprzętowy RPi 5 zwraca się już przy zablokowaniu **jednego** incydentu.
 
-*(Wskazówka: Ponieważ zestaw podstawowy pracuje na pojedynczym dysku NVMe, najważniejsze pliki z `/srv/nas/pliki` warto okresowo kopiować na zewnętrzny dysk USB zgodnie z zasadą backupu 3-2-1 lub rozbudować zestaw o wielodyskowy **Radxa Penta SATA HAT** z macierzą RAID — szczegóły poniżej).*
-
 ## 📝 To-Do / Roadmap
 
 * \[x\] **Migracja z Twingate na Tailscale** *(wdrożone w `setup_homelab.sh`)*
@@ -51,15 +50,15 @@ Wdrożenie zestawu na Raspberry Pi 5 pozwala ograniczyć stałe opłaty za subsk
 
 * \[x\] **Usunięcie niewspieranego FileBrowsera** – dostęp do dysku NAS realizowany bezpośrednio przez bezpieczny udział **Samba (SMB)** (lokalnie i przez Tailscale).
 
-* \[x\] **Zamknięcie otwartych portów webowych w sieci LAN + Tailscale w trybie `bridge`** – przy aktywnym Caddy wyeliminowano mapowanie portów `8080`, `8222` oraz `3000` na interfejsie LAN, a kontener Tailscale przeniesiono na dedykowaną sieć `homelab-net` (`172.28.0.0/24`).
+* \[x\] **Zamknięcie otwartych portów webowych w sieci LAN + Tailscale w trybie `bridge` (`TS_USERSPACE=true`)** – przy aktywnym Caddy wyeliminowano mapowanie portów `8080`, `8222` oraz `3000` na interfejsie LAN, a kontener Tailscale przeniesiono na dedykowaną sieć `homelab-net` (`172.28.0.0/24`) z obsługą jąder opartych o `nftables`.
 
 * \[x\] **Docker User-Remap (`userns-remap`)** – opcjonalna izolacja przestrzeni nazw UID/GID w `/etc/docker/daemon.json` z automatycznym ustawieniem uprawnień wolumenów dla `dockremap`.
 
 * \[x\] **Automatyczna aktualizacja list Pi-hole Gravity w nocy** – zadanie Cron (`/etc/cron.d/pihole-gravity` codziennie o `03:30`) odświeżające bazy blokowania (`docker exec pihole pihole -g`) przed nocnym oknem aktualizacji Watchtowera (`04:00`).
 
-* \[x\] **Zaktualizować `uninstall_homelab.sh`** o czyszczenie katalogu `~/docker/homelab/tailscale`, pliku `/etc/sysctl.d/99-tailscale.conf`, `/etc/cron.d/pihole-gravity` oraz opcjonalne wycofanie `userns-remap`.
+* \[x\] **Aktualizacja `uninstall_homelab.sh`** – czyszczenie węzła Tailscale (`tailscale logout`), sieci `homelab-net`, `/etc/sysctl.d/99-tailscale.conf`, `/etc/cron.d/pihole-gravity` oraz opcjonalne wycofanie `userns-remap`.
 
-* \[ \] **Automatyczny backup konfiguracji** (bazy Vaultwarden, repozytoriów Gitea oraz ustawień Pi-hole) na zewnętrzny nośnik lub zaszyfrowane archiwum.
+* \[x\] **Automatyczny, szyfrowany backup 3-2-1, przygotowanie dysku USB i kreator przywracania (`setup_backup.sh`)** – nocne zadanie Cron (`03:00`) tworzące lustrzaną kopię `/srv/nas/pliki` (z historią usuniętych/nadpisanych plików) oraz szyfrowane AES-256 paczki z bazami Vaultwarden (SQLite), PostgreSQL Gitea i ustawieniami Pi-hole na zewnętrzny dysk USB, z wbudowanym formatowaniem `ext4` + wpisem `UUID`/`nofail` do `/etc/fstab` oraz kreatorem przywracania po samym haśle.
 
 ## 🛠️ Sprzęt użyty w projekcie (Hardware)
 
@@ -70,6 +69,8 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 * **Adapter PCIe:** Raspberry Pi M.2 HAT+
 
 * **Dysk systemowy i NAS:** Raspberry Pi SSD (NVMe PCIe Gen 3) + dodatkowe radiatory chłodzące na dysku
+
+* **Dysk backupowy (opcjonalnie pod `setup_backup.sh`):** Zewnętrzny dysk SSD/HDD USB 3.0 (automatycznie formatowany i montowany pod `/mnt/backup_usb` przez kreator `setup_backup.sh`)
 
 * **Chłodzenie procesora i obudowy:** Raspberry Pi Active Cooler (sterowany hybrydowo na podstawie temperatury CPU oraz czujnika S.M.A.R.T. dysku NVMe)
 
@@ -89,7 +90,7 @@ Zamiast pojedynczego dysku NVMe na **Raspberry Pi M.2 HAT+** można podłączyć
 
 * **Jedno wspólne zasilanie 12V DC:** nakładka zasila jednocześnie Raspberry Pi 5 oraz podłączone dyski SATA (w tym prądożerne dyski 3.5" HDD), eliminując potrzebę stosowania osobnego zasilacza USB-C 27W.
 
-* **Opcjonalny moduł Top Board (OLED + wentylator PWM):** wbudowany wyświetlacz pokazuje na bieżąco adres IP, temperaturę oraz stan zapełnienia macierzy bez logowania się po SSH.
+* **Opcjonalny moduł Top Board (OLED + wentylator PWM + przycisk):** wbudowany wyświetlacz pokazuje na bieżąco adres IP, temperaturę oraz stan zapełnienia macierzy bez logowania się po SSH.
 
 * **O czym pamiętać przy tej zamianie:** system operacyjny uruchamia się wtedy z karty microSD (lub SSD na USB 3.0), skrypt `nvme-fan-guard` z `setup_cooler.sh` nie jest potrzebny (brak dysku NVMe), a zamiast obudowy `rpi5_nvme_case.scad` należy zastosować obudowę dedykowaną pod wieżę dysków SATA.
 
@@ -99,9 +100,10 @@ Zamiast pojedynczego dysku NVMe na **Raspberry Pi M.2 HAT+** można podłączyć
 | ----- | ----- | ----- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
-| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole** (+ nocny Cron Gravity), **Samba (SMB)**, **Tailscale (VPN Subnet Router w sieci `bridge`)**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS `.home` + zamknięcie portów webowych na LAN)**, **Watchtower** (auto-update o 04:00) oraz **Docker `userns-remap`**. | 
+| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole** (+ nocny Cron Gravity), **Samba (SMB)**, **Tailscale (VPN Subnet Router w sieci `bridge` + `TS_USERSPACE=true`)**, **Vaultwarden**, **Gitea (+ PostgreSQL)**, **Caddy Reverse Proxy (lokalny HTTPS `.home` + zamknięcie portów webowych na LAN)**, **Watchtower** (auto-update o 04:00) oraz **Docker `userns-remap`**. | 
 | **`add_pihole_blocklists.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny konfigurator list blokowania (Blocklist) dla kontenera Docker Pi-hole: dodaje gotowe pakiety **HaGeZi** (Multi PRO / PRO++ / Ultimate + TIF w formacie RPZ) chroniące przed reklamami, telemetrią, **malware** oraz **phishingiem**, a także klasyczny zestaw lub własne adresy URL do `gravity.db` (z automatycznym backupem, wykrywaniem silnika `pihole-FTL sqlite3`/`sqlite3`/`python3` i aktualizacją `pihole -g`). | 
-| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: usuwa kontenery HomeLab & NAS, nieużywane sieci/obrazy i katalog konfiguracyjny `~/docker/homelab`, przywraca `systemd-resolved` oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki`). | 
+| **`setup_backup.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator backupu 3-2-1 (`03:00` w Cronie) z dwoma trybami: **\[1\]** automatyczne formatowanie dysku USB (`GPT` + `ext4` z własną etykietą + wpis `UUID`/`nofail` w `/etc/fstab`), lustrzana kopia NAS (`rsync` z archiwum usuniętych plików, jak ulepszony **RAID 1**) oraz szyfrowane (**AES-256-CBC**) migawki baz; **\[2\]** interaktywny **Kreator Przywracania (Restore Wizard)** wymagający tylko wyboru migawki/usługi i podania hasła. | 
+| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z podwójnym potwierdzeniem: wylogowuje węzeł Tailscale (`tailscale logout`), usuwa kontenery HomeLab & NAS, sieć `homelab-net`, zadania Cron/sysctl i katalog `~/docker/homelab`, opcjonalnie wycofuje `userns-remap`, przywraca `systemd-resolved` oraz chroni dane na dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, przedłużoną komorą na taśmę PCIe, uniesionym dachem z logo (*Badge*) oraz nóżkami dystansowymi pod druk z elastycznego TPU. | 
@@ -114,8 +116,9 @@ Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa z
 
 2. Uruchom interaktywny konfigurator bezpośrednio z terminala:
 
-   ```bash
+   ```
    bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh)
+   
    ```
 
    **Co możesz skonfigurować w kreatorze:**
@@ -134,28 +137,32 @@ Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa z
 
 3. Po zakończeniu pracy skryptu odmontuj partycje, przełóż nośnik do Raspberry Pi 5, podłącz kabel LAN oraz zasilanie:
 
-   ```bash
+   ```
    sudo umount /media/$USER/bootfs /media/$USER/rootfs
+   
    ```
 
 4. Po około 60–90 sekundach połącz się z płytką przez SSH:
 
-   ```bash
+   ```
    ssh twoj_login@192.168.1.250
+   
    ```
 
    *(Jeśli musisz zlokalizować płytkę w sieci lokalnej, użyj szybkiego skanowania Nmap dla portu SSH):*
 
-   ```bash
+   ```
    nmap -p 22 -T4 -n 192.168.1.0/24 --open
+   
    ```
 
 ## 🐳 Krok 2: Instalacja Dockera i Auto-Maintenance (`install_docker.sh`)
 
 Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker, Docker Compose v2 oraz harmonogram automatycznej konserwacji systemu jedną komendą:
 
-```bash
+```
 curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh | bash && newgrp docker
+
 ```
 
 **Co robi skrypt:**
@@ -174,8 +181,9 @@ curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs
 
 *Weryfikacja poprawności instalacji:*
 
-```bash
+```
 docker run --rm hello-world
+
 ```
 
 ## 🛡️ Krok 3: Instalacja usług HomeLab & NAS (`setup_homelab.sh`)
@@ -194,8 +202,9 @@ Jeśli planujesz uruchomić zdalny dostęp **Tailscale** (dostęp do sieci domow
 
 Aby uruchomić usługi domowego serwera (z możliwością wyboru `[T/n]` dla każdego kontenera i opcji bezpieczeństwa), wykonaj na Raspberry Pi 5:
 
-```bash
+```
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh)
+
 ```
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, klucze oraz ścieżki z klawiatury).*
@@ -206,7 +215,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 2. **Samba NAS:** Dysk sieciowy SMB/CIFS widoczny w systemach Windows, Linux oraz macOS (dostępny lokalnie oraz zdalnie przez Tailscale).
 
-3. **Tailscale (VPN Subnet Router w trybie `bridge`):** Bezpieczny, zdalny dostęp spoza domu bez otwierania portów na routerze (działa nawet za CGNAT). Działa w odizolowanej sieci `homelab-net` (`172.28.0.0/24`), rozgłasza podsieć LAN oraz mostek Dockera i kieruje cały ruch DNS z telefonu na LTE/5G bezpośrednio do Pi-hole (`172.28.0.10`).
+3. **Tailscale (VPN Subnet Router w trybie `bridge` + `TS_USERSPACE=true`):** Bezpieczny, zdalny dostęp spoza domu bez otwierania portów na routerze (działa nawet za CGNAT). Działa w odizolowanej sieci `homelab-net` (`172.28.0.0/24`), jest w pełni kompatybilny z nowszymi jądrami RPi OS (`nftables` bez `iptable_filter`) i kieruje cały ruch DNS z telefonu na LTE/5G bezpośrednio do Pi-hole (`172.28.0.10`).
 
 4. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden (przy włączonym Caddy automatycznie korzysta z `https://vault.home` wymaganego przez WebCrypto).
 
@@ -224,9 +233,10 @@ Ponieważ Caddy wystawia certyfikaty dla lokalnych domen `.home` z własnego, lo
 
 * **Ubuntu / Debian:**
 
-  ```bash
+  ```
   sudo cp homelab-root-ca.crt /usr/local/share/ca-certificates/
   sudo update-ca-certificates
+  
   ```
 
   *(W Chrome/Firefox dodatkowo: Ustawienia → Certyfikaty → Urzędy certyfikacji → Importuj → zaznacz zaufanie dla witryn).*
@@ -241,8 +251,9 @@ Ponieważ Caddy wystawia certyfikaty dla lokalnych domen `.home` z własnego, lo
 
 Po uruchomieniu kontenera **Pi-hole** możesz jednym poleceniem dodać sprawdzone listy blokujące reklamy, telemetrię, **malware** oraz **phishing** (z opcjonalną kopią zapasową bazy `gravity.db` w `~/pihole_backups` przed zmianami):
 
-```bash
+```
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/add_pihole_blocklists.sh)
+
 ```
 
 **Dostępne profile w konfiguratorze:**
@@ -303,14 +314,15 @@ Gdy `setup_homelab.sh` uruchomi już kontener `tailscale` w sieci `homelab-net`,
 
 3. **Klient na telefonie / laptopie:**
 
-   * Zainstaluj aplikację **Tailscale**, zaloguj się na to samo konto, przełącz telefon na dane komórkowe i sprawdź dostęp np. do `https://pihole.home/admin` lub `https://vault.home`.
+   * Zainstaluj aplikację **Tailscale**, zaloguj się na to samo konto, wyłącz **Prywatny DNS** w ustawieniach Androida, przełącz telefon na dane komórkowe i sprawdź dostęp np. do `https://pihole.home/admin` lub `https://vault.home`.
 
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
 
 W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić optymalny obieg powietrza wokół radiatora NVMe oraz cichą pracę, uruchom konfigurator chłodzenia:
 
-```bash
+```
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh)
+
 ```
 
 **Co robi skrypt:**
@@ -320,6 +332,44 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 * Instaluje pakiet `nvme-cli` oraz usługę systemową `nvme-fan-guard.service`, która odczytuje temperaturę dysku SSD i automatycznie reguluje obroty wentylatora podczas dużych transferów plików przez NAS (nawet gdy sam procesor RPi 5 jest chłodny).
 
 * Tworzy polecenie diagnostyczne `rpi-temp`, pozwalające w dowolnej chwili sprawdzić temperatury oraz obroty wentylatora.
+
+## 💾 Krok 5: Nocny Backup 3-2-1, format dysku USB i Restore (`setup_backup.sh`)
+
+Ponieważ pojedynczy dysk NVMe chroni poufność danych, ale nie chroni przed awarią samego nośnika lub przypadkowym skasowaniem plików, podepnij zewnętrzny dysk SSD/HDD do portu **USB 3.0** i uruchom interaktywny konfigurator:
+
+```
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_backup.sh)
+
+```
+
+*(Jeśli na systemie nie ma jeszcze pakietu `parted` do tworzenia partycji na czystym dysku USB, zainstalujesz go przez `sudo apt update && sudo apt install -y parted`).*
+
+**Dwa tryby działania skryptu:**
+
+1. **Tryb `[1]` — Konfiguracja nocnego backupu (`03:00` w Cronie) + przygotowanie dysku USB:**
+
+   * **Automatyczne formatowanie i montowanie dysku USB:** jeśli katalog `/mnt/backup_usb` nie jest jeszcze zamontowany, kreator wyświetla podłączone dyski, blokuje możliwość przypadkowego wybrania dysku systemowego (`nvme*` / `mmcblk*`), formatuje wskazany dysk USB (`GPT` + `ext4`) pod wybraną przez Ciebie etykietą (np. `BACKUP_USB`), pobiera `UUID` i sam dopisuje bezpieczny wpis z opcją **`nofail`** do `/etc/fstab`.
+
+   * **Lustrzana kopia NAS (ulepszony RAID 1):** utrzymuje kopię 1:1 katalogu `/srv/nas/pliki` w `/mnt/backup_usb/homelab-backup/nas-mirror`, ale zamiast natychmiast kasować usunięte lub nadpisane pliki, przenosi je do katalogu historii (`nas-deleted-history/<data>/`) na zadaną liczbę dni (domyślnie 14).
+
+   * **Spójne migawki baz i konfiguracji (AES-256-CBC):** wykonuje bezpieczny online-backup bazy SQLite Vaultwardena (`.backup`), pełny zrzut `pg_dump` bazy PostgreSQL Gitei wraz z repozytoriami, ustawienia Pi-hole, Caddy oraz `docker-compose.yml`, a następnie pakuje je i szyfruje kluczem z `/etc/homelab-backup.key` (`chmod 600`).
+
+   * **Bezpiecznik `mountpoint`:** jeśli dysk zewnętrzny zostanie odłączony, skrypt przerywa działanie i zapisuje ostrzeżenie w `/var/log/homelab-backup.log`, chroniąc dysk systemowy NVMe przed zapełnieniem.
+
+2. **Tryb `[2]` — Kreator Przywracania (Restore Wizard):**
+
+   * Po uruchomieniu `sudo /usr/local/sbin/homelab-backup.sh` i wybraniu opcji **`[2]`** wyświetla listę wszystkich migawek od najnowszej, pozwala przywrócić **wszystko naraz** lub **pojedynczą usługę** (Vaultwarden, Gitea + PostgreSQL, Pi-hole/Caddy lub pliki NAS) i pyta **wyłącznie o hasło AES-256** (automatycznie zachowując uprawnienia `dockremap` przy aktywnym `userns-remap`).
+
+*Ręczny test kopii zapasowej oraz uruchomienie kreatora przywracania:*
+
+```
+# Natychmiastowe uruchomienie testowego backupu:
+sudo /usr/local/sbin/homelab-backup.sh --auto && tail -n 20 /var/log/homelab-backup.log
+
+# Uruchomienie kreatora przywracania (wybierz opcję [2]):
+sudo /usr/local/sbin/homelab-backup.sh
+
+```
 
 ## 🌐 Dostęp do usług po instalacji
 
@@ -334,18 +384,20 @@ Przy założeniu domyślnego adresu IP `192.168.1.250`, domyślnych domen `.home
 | **Caddy (HTTPS)** | Porty `80` i `443` | — | Certyfikat CA do pobrania: `/srv/nas/pliki/homelab-root-ca.crt`. | 
 | **Tailscale** | Działa w sieci `homelab-net` (`bridge`) | — | Status połączenia: `sudo docker exec tailscale tailscale status`. | 
 | **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | — | Logi aktualizacji: `sudo docker logs watchtower`. | 
+| **Backup 3-2-1** | Działa w tle (harmonogram Cron `03:00`) | — | Logi: `/var/log/homelab-backup.log` • Restore: `sudo /usr/local/sbin/homelab-backup.sh` (`[2]`). | 
 
 ## 🗑️ Deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
 
 Jeśli chcesz zresetować środowisko HomeLab & NAS, usunąć kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
-```bash
+```
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh)
+
 ```
 
 **Zabezpieczenia deinstalatora:**
 
-1. **Potwierdzenie usunięcia kontenerów (`TAK`):** Skrypt zatrzymuje i usuwa kontenery z `~/docker/homelab` (`docker compose down -v`), czyści nieużywane sieci i obrazy (`docker image prune -a -f`), usuwa katalog konfiguracyjny oraz przywraca domyślną konfigurację `systemd-resolved` (port `53`).
+1. **Potwierdzenie usunięcia kontenerów (`TAK`):** Skrypt wylogowuje węzeł Tailscale (`tailscale logout`), zatrzymuje i usuwa kontenery z `~/docker/homelab` (`docker compose down -v`), usuwa sieć `homelab-net`, nieużywane obrazy (`docker system prune -a -f --volumes`), zadania Cron/sysctl, katalog konfiguracyjny, opcjonalnie wycofuje `userns-remap` oraz przywraca domyślną konfigurację `systemd-resolved` (port `53`).
 
 2. **Ochrona danych na dysku NAS (`USUN_DANE`):** Pliki w `/srv/nas/pliki` są domyślnie **chronione** – ich wykasowanie wymaga osobnego, jawnego potwierdzenia frazą `USUN_DANE`.
 
@@ -353,22 +405,24 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
 
 * **Sprawdzenie temperatury CPU, dysku NVMe oraz obrotów Active Coolera:**
 
-  ```bash
+  ```
   rpi-temp
   # lub podgląd na żywo co 2 sekundy:
   watch -n 2 rpi-temp
+  
   ```
 
 * **Pełna diagnostyka i reset konfiguracji wentylatora (w przypadku pracy na 100% obrotów):**
   Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
 
-  ```bash
+  ```
   sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh)
+  
   ```
 
 * **Sprawdzenie czy nocny Auto-Update systemu (03:30) został przeprowadzony:**
 
-  ```bash
+  ```
   # 1. Podgląd pełnego logu z nocnej aktualizacji (update, full-upgrade, autoremove, autoclean, docker prune):
   tail -n 50 /var/log/auto-update.log
   
@@ -377,11 +431,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
   
   # 3. Historia faktycznie zaktualizowanych lub usuniętych pakietów APT:
   tail -n 30 /var/log/apt/history.log
+  
   ```
 
 * **Sprawdzenie czy aktualizacja kontenerów Docker (Watchtower o 04:00) została przeprowadzona:**
 
-  ```bash
+  ```
   # 1. Logi działania kontenera Watchtower:
   docker logs watchtower
   
@@ -390,17 +445,19 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
   
   # 3. Ręczne wymuszenie natychmiastowego sprawdzenia i aktualizacji wszystkich kontenerów (test jednorazowy):
   sudo docker run --rm -e DOCKER_API_VERSION=1.44 -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower --run-once
+  
   ```
 
 * **Sprawdzenie statusu uruchomionych kontenerów:**
 
-  ```bash
+  ```
   docker ps
+  
   ```
 
 * **Podgląd logów poszczególnych kontenerów:**
 
-  ```bash
+  ```
   docker logs pihole
   docker logs samba-nas
   docker logs vaultwarden
@@ -409,11 +466,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PAR
   docker logs caddy
   docker logs tailscale
   docker exec tailscale tailscale status
+  
   ```
 
 * **Restart lub zatrzymanie usług:**
 
-  ```bash
+  ```
   cd ~/docker/homelab
   docker compose restart   # lub: docker compose down
+  
   ```
