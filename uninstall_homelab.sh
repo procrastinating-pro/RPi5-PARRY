@@ -9,139 +9,116 @@ NC='\033[0m'
 
 clear
 echo -e "${RED}======================================================${NC}"
-echo -e "${RED}   DEINSTALATOR DOCKER HOMELAB / MEDIA STACK (RPi 5)  ${NC}"
+echo -e "${RED}       DEINSTALATOR DOCKER HOMELAB & NAS (RPi 5)      ${NC}"
 echo -e "${RED}======================================================${NC}"
 
-echo -e "\n${YELLOW}Wybierz zakres deinstalacji:${NC}"
-echo -e "  ${CYAN}1)${NC} Tylko ${YELLOW}HomeLab & NAS${NC} (Pi-hole, Samba, FileBrowser, Twingate, Vaultwarden, Watchtower)"
-echo -e "  ${CYAN}2)${NC} Tylko ${YELLOW}Media Stack${NC}   (Jellyfin, qBittorrent, Prowlarr, Sonarr, Radarr, Bazarr)"
-echo -e "  ${RED}3)${NC} ${RED}Oba środowiska${NC}      (HomeLab & NAS + Media Stack)"
-echo -e "  ${GREEN}4)${NC} Anuluj\n"
+ACTUAL_USER=${SUDO_USER:-$USER}
+DEFAULT_DOCKER_DIR="/home/$ACTUAL_USER/docker/homelab"
+DEFAULT_NAS_DIR="/srv/nas/pliki"
 
-read -p "Wybierz opcję [1-4]: " CHOICE
+read -p "1. Katalog konfiguracji Dockera [$DEFAULT_DOCKER_DIR]: " DOCKER_DIR
+DOCKER_DIR=${DOCKER_DIR:-$DEFAULT_DOCKER_DIR}
 
-case "$CHOICE" in
-    1)
-        REMOVE_HOMELAB=true
-        REMOVE_MEDIA=false
-        SCOPE_LABEL="HomeLab & NAS (~/docker/homelab)"
-        ;;
-    2)
-        REMOVE_HOMELAB=false
-        REMOVE_MEDIA=true
-        SCOPE_LABEL="Media Stack (~/docker/mediastack)"
-        ;;
-    3)
-        REMOVE_HOMELAB=true
-        REMOVE_MEDIA=true
-        SCOPE_LABEL="OBA środowiska (HomeLab & NAS + Media Stack)"
-        ;;
-    *)
-        echo -e "${GREEN}Deinstalacja anulowana.${NC}"
-        exit 0
-        ;;
-esac
+read -p "2. Katalog danych na dysku NAS [$DEFAULT_NAS_DIR]: " NAS_DIR
+NAS_DIR=${NAS_DIR:-$DEFAULT_NAS_DIR}
 
-echo -e "\n${YELLOW}UWAGA: Ten skrypt bezpowrotnie usunie kontenery oraz pliki konfiguracyjne dla:${NC}"
-echo -e "  -> ${RED}${SCOPE_LABEL}${NC}\n"
+echo -e "\n${YELLOW}[!] UWAGA: Ta operacja zatrzyma i usunie wszystkie kontenery HomeLab,"
+echo -e "    dedykowaną sieć bridge, nieużywane obrazy, reguły sysctl/cron oraz konfigurację!${NC}"
+read -p "    Wpisz 'TAK' wielkimi literami, aby potwierdzić: " CONFIRM_APP
 
-read -p "Czy na pewno chcesz kontynuować? (Wpisz 'TAK' dużymi literami, aby potwierdzić): " CONFIRM1
-
-if [ "$CONFIRM1" != "TAK" ]; then
-    echo -e "${GREEN}Deinstalacja anulowana.${NC}"
+if [ "$CONFIRM_APP" != "TAK" ]; then
+    echo -e "${GREEN}[*] Anulowano. Żadne zmiany nie zostały wprowadzone.${NC}"
     exit 0
 fi
 
-ACTUAL_USER=${SUDO_USER:-$USER}
-HOMELAB_DIR="/home/$ACTUAL_USER/docker/homelab"
-MEDIA_DIR="/home/$ACTUAL_USER/docker/mediastack"
-NAS_DIR="/srv/nas/pliki"
+# ================= 1. WYLOGOWANIE TAILSCALE I ZATRZYMANIE KONTENERÓW =================
+echo -e "\n${YELLOW}[1/6] Zatrzymywanie i usuwanie kontenerów Docker...${NC}"
+if docker ps -q -f name="^tailscale$" | grep -q .; then
+    echo -e "${YELLOW}   -> Wylogowywanie węzła Tailscale z panelu (tailscale logout)...${NC}"
+    sudo docker exec tailscale tailscale logout >/dev/null 2>&1 || true
+fi
 
-# ================= 1. ZATRZYMYWANIE I USUWANIE KONTENERÓW =================
-echo -e "\n${CYAN}[1/4] Zatrzymywanie i usuwanie wybranych kontenerów Docker...${NC}"
+if [ -f "$DOCKER_DIR/docker-compose.yml" ]; then
+    cd "$DOCKER_DIR"
+    sudo docker compose down -v --remove-orphans || true
+fi
 
-if [ "$REMOVE_HOMELAB" = true ]; then
-    echo -e "${YELLOW} -> Usuwanie stosu HomeLab & NAS...${NC}"
-    if [ -f "$HOMELAB_DIR/docker-compose.yml" ]; then
-        (cd "$HOMELAB_DIR" && sudo docker compose down -v) || true
+# Awaryjne usunięcie po nazwach kontenerów, gdyby plik compose został wcześniej skasowany
+for cname in pihole samba-nas tailscale vaultwarden gitea gitea-db caddy watchtower filebrowser-nas; do
+    if docker ps -a -q -f name="^${cname}$" | grep -q .; then
+        sudo docker rm -f "$cname" >/dev/null 2>&1 || true
+    fi
+done
+
+sudo docker network rm homelab-net >/dev/null 2>&1 || true
+
+# ================= 2. CZYSZCZENIE CRON, SYSCTL I KONFIGURACJI =================
+echo -e "${YELLOW}[2/6] Usuwanie zadań Cron, reguł sysctl oraz katalogu $DOCKER_DIR...${NC}"
+sudo rm -f /etc/cron.d/pihole-gravity
+sudo rm -f /etc/sysctl.d/99-tailscale.conf /etc/sysctl.d/99-twingate.conf
+sudo sysctl --system >/dev/null 2>&1 || true
+
+if [ -d "$DOCKER_DIR" ]; then
+    sudo rm -rf "$DOCKER_DIR"
+    echo -e "${GREEN}   [+] Usunięto katalog: $DOCKER_DIR${NC}"
+fi
+
+# ================= 3. CZYSZCZENIE NIEUŻYWANYCH OBRAZÓW I WOLUMENÓW =================
+echo -e "${YELLOW}[3/6] Czyszczenie nieużywanych obrazów i sieci Docker...${NC}"
+sudo docker system prune -a -f --volumes >/dev/null 2>&1 || true
+
+# ================= 4. OPCJONALNE WYŁĄCZENIE DOCKER USERNS-REMAP =================
+echo -e "${YELLOW}[4/6] Sprawdzanie izolacji Docker userns-remap...${NC}"
+if grep -q '"userns-remap"' /etc/docker/daemon.json 2>/dev/null; then
+    read -p "   -> Wykryto aktywne 'userns-remap' w /etc/docker/daemon.json. Wyłączyć je? [t/N]: " DISABLE_USERNS
+    DISABLE_USERNS=${DISABLE_USERNS:-N}
+    if [[ "$DISABLE_USERNS" =~ ^[TtYy]$ ]]; then
+        sudo python3 - <<'PYEOF'
+import json
+path = "/etc/docker/daemon.json"
+try:
+    with open(path, "r") as f:
+        data = json.load(f)
+    data.pop("userns-remap", None)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+except Exception:
+    pass
+PYEOF
+        sudo systemctl restart docker
+        echo -e "${GREEN}   [+] Wyłączono userns-remap i zrestartowano demona Docker.${NC}"
     else
-        echo -e "${YELLOW}    Brak pliku docker-compose.yml w $HOMELAB_DIR. Próba ręcznego usunięcia...${NC}"
-        sudo docker rm -f pihole samba-nas filebrowser-nas twingate-connector vaultwarden watchtower 2>/dev/null || true
+        echo -e "${CYAN}   [*] Pozostawiono userns-remap w /etc/docker/daemon.json.${NC}"
     fi
 fi
 
-if [ "$REMOVE_MEDIA" = true ]; then
-    echo -e "${YELLOW} -> Usuwanie stosu Media Stack...${NC}"
-    if [ -f "$MEDIA_DIR/docker-compose.yml" ]; then
-        (cd "$MEDIA_DIR" && sudo docker compose down -v) || true
-    else
-        echo -e "${YELLOW}    Brak pliku docker-compose.yml w $MEDIA_DIR. Próba ręcznego usunięcia...${NC}"
-        sudo docker rm -f jellyfin qbittorrent prowlarr sonarr radarr bazarr 2>/dev/null || true
+# ================= 5. PRZYWRÓCENIE SYSTEMD-RESOLVED (PORT 53) =================
+echo -e "${YELLOW}[5/6] Przywracanie domyślnej obsługi DNS (systemd-resolved)...${NC}"
+if [ -f /etc/systemd/resolved.conf ]; then
+    sudo sed -i 's/DNSStubListener=no/#DNSStubListener=yes/g' /etc/systemd/resolved.conf
+    if [ -f /run/systemd/resolve/stub-resolv.conf ]; then
+        sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
     fi
+    sudo systemctl restart systemd-resolved || true
+    echo -e "${GREEN}   [+] Przywrócono systemd-resolved.${NC}"
 fi
 
-# ================= 2. CZYSZCZENIE SIECI I OBRAZÓW =================
-echo -e "\n${CYAN}[2/4] Czyszczenie nieużywanych sieci i obrazów Dockera (prune)...${NC}"
-sudo docker network prune -f
-sudo docker image prune -a -f
-
-# ================= 3. USUWANIE KATALOGÓW KONFIGURACYJNYCH =================
-echo -e "\n${CYAN}[3/4] Usuwanie plików konfiguracyjnych Dockera...${NC}"
-
-if [ "$REMOVE_HOMELAB" = true ]; then
-    if [ -d "$HOMELAB_DIR" ]; then
-        sudo rm -rf "$HOMELAB_DIR"
-        echo -e "${GREEN}[+] Katalog $HOMELAB_DIR został usunięty.${NC}"
+# ================= 6. OCHRONA DANYCH NAS (PODWÓJNE POTWIERDZENIE) =================
+echo -e "\n${YELLOW}[6/6] Ochrona danych na dysku NAS ($NAS_DIR):${NC}"
+if [ -d "$NAS_DIR" ]; then
+    echo -e "${RED}[!] Katalog $NAS_DIR z Twoimi plikami jest domyślnie ZACHOWYWANY.${NC}"
+    read -p "    Czy chcesz BEZPOWROTNIE usunąć wszystkie pliki z $NAS_DIR? (wpisz 'USUN_DANE' lub wciśnij Enter, aby zachować): " CONFIRM_NAS
+    if [ "$CONFIRM_NAS" == "USUN_DANE" ]; then
+        sudo rm -rf "$NAS_DIR"
+        echo -e "${RED}   [!] Bezpowrotnie usunięto katalog: $NAS_DIR${NC}"
     else
-        echo -e "${YELLOW}[i] Katalog $HOMELAB_DIR nie istnieje.${NC}"
-    fi
-fi
-
-if [ "$REMOVE_MEDIA" = true ]; then
-    if [ -d "$MEDIA_DIR" ]; then
-        sudo rm -rf "$MEDIA_DIR"
-        echo -e "${GREEN}[+] Katalog $MEDIA_DIR został usunięty.${NC}"
-    else
-        echo -e "${YELLOW}[i] Katalog $MEDIA_DIR nie istnieje.${NC}"
-    fi
-fi
-
-# ================= 4. DANE NA DYSKU NAS =================
-echo -e "\n${RED}[4/4] DANE NA DYSKU NAS ($NAS_DIR)${NC}"
-
-if [ "$REMOVE_HOMELAB" = false ] && [ "$REMOVE_MEDIA" = true ]; then
-    echo -e "${YELLOW}Wybrano usunięcie wyłącznie Media Stacka. Pozostałe pliki NAS pozostaną nienaruszone.${NC}"
-    read -p "Czy chcesz RÓWNIEŻ usunąć foldery mediów i pobrań ($NAS_DIR/media oraz $NAS_DIR/downloads)? (Wpisz 'USUN_MEDIA' aby wykasować): " CONFIRM_MEDIA
-
-    if [ "$CONFIRM_MEDIA" == "USUN_MEDIA" ]; then
-        sudo rm -rf "$NAS_DIR/media" "$NAS_DIR/downloads"
-        echo -e "${GREEN}[+] Katalogi $NAS_DIR/media oraz $NAS_DIR/downloads zostały wykasowane.${NC}"
-    else
-        echo -e "${GREEN}[+] Zachowano pliki mediów i pobrań w $NAS_DIR.${NC}"
+        echo -e "${GREEN}   [+] Zachowano Twoje pliki w: $NAS_DIR${NC}"
     fi
 else
-    echo -e "${YELLOW}Obecnie na dysku znajdują się wszystkie Twoje pliki i foldery udostępniane przez NAS.${NC}"
-    read -p "Czy chcesz RÓWNIEŻ usunąć całą zawartość NAS ($NAS_DIR)? (Wpisz 'USUN_DANE' aby wykasować): " CONFIRM2
-
-    if [ "$CONFIRM2" == "USUN_DANE" ]; then
-        if [ -d "$NAS_DIR" ]; then
-            sudo rm -rf "$NAS_DIR"
-            echo -e "${GREEN}[+] Katalog NAS ($NAS_DIR) został wykasowany.${NC}"
-        else
-            echo -e "${YELLOW}[i] Katalog $NAS_DIR nie istnieje.${NC}"
-        fi
-    else
-        echo -e "${GREEN}[+] Zachowano dane na dysku NAS w $NAS_DIR.${NC}"
-    fi
+    echo -e "${CYAN}   [*] Katalog $NAS_DIR nie istnieje (pominięto).${NC}"
 fi
 
-# ================= 5. PRZYWRÓCENIE PORTU 53 (TYLKO PRZY USUWANIU HOMELAB) =================
-if [ "$REMOVE_HOMELAB" = true ] && systemctl is-active --quiet systemd-resolved; then
-    echo -e "\n${CYAN}[*] Przywracanie domyślnej konfiguracji systemd-resolved (port 53)...${NC}"
-    sudo sed -i 's/DNSStubListener=no/#DNSStubListener=yes/g' /etc/systemd/resolved.conf || true
-    sudo systemctl restart systemd-resolved || true
-fi
-
-echo -e "\n${RED}======================================================${NC}"
-echo -e "${GREEN}[SUKCES] Wybrany zakres (${SCOPE_LABEL}) został odinstalowany.${NC}"
-echo -e "${RED}======================================================${NC}"
+echo -e "\n${CYAN}======================================================${NC}"
+echo -e "${GREEN}[SUKCES] Środowisko HomeLab zostało wyczyszczone!${NC}"
+echo -e "${CYAN}======================================================${NC}"
